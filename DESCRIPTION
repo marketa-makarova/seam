@@ -26,3 +26,5 @@ NeedsCompilation: no
 Packaged: 2026-04-18 19:15:40 UTC; makar
 Author: Marketa Barac Makarova [aut, cre],
   Jan Kolacek [ctb]
+URL: https://github.com/marketa-makarova/seam
+BugReports: https://github.com/marketa-makarova/seam/issues
