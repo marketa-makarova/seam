@@ -1,0 +1,25 @@
+---
+output: github_document
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# seam
+
+
+The goal of seam is to ...
+
+## Installation
+
+You can install seam like so:
+
+``` r
+devtools::install_github("marketa-makarova/seam")
+```

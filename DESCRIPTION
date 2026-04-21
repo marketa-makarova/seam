@@ -1,0 +1,28 @@
+Package: seam
+Title: Sparse Extended Analysis of Modules
+Version: 0.1.0
+Maintainer: Marketa Barac Makarova <marketa.makarova@mail.muni.cz>
+Authors@R: c(person(given = c("Marketa", "Barac"),
+                      family = "Makarova",
+                      role = c("aut", "cre"),
+                      email = "marketa.makarova@mail.muni.cz"),
+               person(given = "Jan",
+                      family = "Kolacek",
+                      role = "ctb"))
+Description: Tools for extended analysis of weighted gene co-expression networks
+    using sparse principal component analysis. Includes
+    functions for group comparison, visualizing of drivers,
+    and clinical trait correlation analysis.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends: R (>= 4.1.0)
+Imports: dplyr, elasticnet, ggplot2, graphics, impute, rlang, stats,
+        tidyr, WGCNA
+Suggests: testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+NeedsCompilation: no
+Packaged: 2026-04-18 19:15:40 UTC; makar
+Author: Marketa Barac Makarova [aut, cre],
+  Jan Kolacek [ctb]
