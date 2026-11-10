@@ -2,7 +2,7 @@
 % Please edit documentation in R/compute_module_trait_correlations.R
 \name{compute_module_trait_correlations}
 \alias{compute_module_trait_correlations}
-\title{Compute correlations between clinical traits and sparse or classic eigengenes}
+\title{Compute Pearson's correlations between clinical traits and sparse or classic eigengenes}
 \usage{
 compute_module_trait_correlations(
   trait_data,
@@ -12,45 +12,39 @@ compute_module_trait_correlations(
 )
 }
 \arguments{
-\item{trait_data}{A list containing trait data.frame(s) with
-clinical variables in columns and samples in rows. Rows must be named
-in correspondence to sample names in expression data.
-Length of the list corresponds to the number of groups.}
+\item{trait_data}{List of numeric trait data frames, one per group, with rows
+in the same order as the corresponding expression matrix.}
 
-\item{spca_data}{A list containing SPCA decomposition results from the
-function \code{spca_all_modules} or \code{spca_all_modules_grid}.}
+\item{spca_data}{Result of spca_all_modules() or spca_all_modules_grid().}
 
-\item{module_assignment}{Character vector. Assigns
-module/cluster to each variable by color. If no clustering is present, this
-argument may be set to \code{NA}.}
+\item{module_assignment}{Vector of modules assigned to variables. One module per variable.}
 
-\item{mode}{Character. Specifies which method to use: \code{"spca"},
-\code{"classic"}, or \code{"both"} for comparison.}
+\item{mode}{One of "spca", "classic", or "both".}
 }
 \value{
-A list with the following elements, depending on the mode:
-\describe{
-\item{\code{mtc_spca}}{A list of module–trait correlation matrices.}
-\item{\code{mtc_classic}}{A list of module–trait correlation matrices.}
-\item{\code{trait_data}}{The input trait data.}
-\item{\code{module_sizes}}{A vector or list indicating the number
-of variables in modules and groups if they are present.}
-\item{\code{reduced_module_sizes}}{A vector or list indicating the number
-of variables in modules selected by SPCA.}
-}
+A list containing mtc_spca and/or mtc_classic (lists of original
+module-by-trait correlation matrices), trait_data, module_sizes,
+reduced_module_sizes, and bootstrap. The bootstrap element is NULL if
+no resampling was performed.
 }
 \description{
-This function computes Pearson correlations between eigengenes and
-external clinical trait data. If the data is clustered into modules, it
-computes these correlations for each module. If several groups are present,
-calculations are performed for each group separately.
+The original correlations are always returned. If spca_data contains
+bootstrap replicates, bootstrap correlations are returned separately.
+Each bootstrap replicate uses the same sampled rows for eigengenes and traits.
 }
-\details{
-In \code{"classic"} mode, the function computes correlations between
-classic eigengenes and clinical trait data using Pearson correlation.
+\examples{
+data("seam_demo", package = "seam")
+fit = spca_all_modules(
+ seam_demo$expression_data,
+ seam_demo$module_assignment,
+ lambda = 0.05, 
+ bootstrap = FALSE
+)
+mtc = compute_module_trait_correlations(
+ seam_demo$trait_data, 
+ fit, seam_demo$module_assignment,
+ mode = "both"
+)
+mtc$mtc_spca[[1]]
 
-In \code{"spca"} mode, it uses SPCA-derived principal components
-instead of classic eigengenes.
-
-In \code{"both"} mode, the function returns results for both methods.
 }

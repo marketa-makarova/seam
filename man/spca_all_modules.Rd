@@ -2,42 +2,50 @@
 % Please edit documentation in R/spca_all_modules.R
 \name{spca_all_modules}
 \alias{spca_all_modules}
-\title{Perform SPCA across all groups and modules}
+\title{Perform SPCA across groups and modules}
 \usage{
-spca_all_modules(expression_data, module_assignment, lambda, modules = "all")
+spca_all_modules(
+  expression_data,
+  module_assignment,
+  lambda,
+  modules = "all",
+  bootstrap = TRUE,
+  n = 100
+)
 }
 \arguments{
-\item{expression_data}{A list containing expression matrices for each group.}
+\item{expression_data}{List of numeric expression matrices (samples in rows).}
 
-\item{module_assignment}{Character vector. Assigns
-module/cluster to each variable by color. If no clustering is present, this
-argument may be set to \code{NA}.}
+\item{module_assignment}{Vector of modules assigned to variables. One module per variable.}
 
-\item{lambda}{Numeric. Sparsity penalty parameter passed to \code{\link[elasticnet]{spca}}. Controls the number of zero weights.}
+\item{lambda}{Non-negative sparsity penalty passed to the \code{para} argument of \code{\link[elasticnet:spca]{elasticnet::spca()}}.}
 
-\item{modules}{Character or character vector. Allows for module selection. Defaults to \code{"all"}.}
+\item{modules}{Module labels to plot, or \code{"all"} (default).}
+
+\item{bootstrap}{Logical. Whether to compute bootstrap replicates.}
+
+\item{n}{Number of bootstrap replicates.}
 }
 \value{
-A list with the following elements:
-\describe{
-\item{\code{PCs}}{List of matrices. Each matrix contains the first SPCA component (PC1) for each module, per dataset.}
-\item{\code{var_exp}}{List of matrices. Each matrix holds the variance explained by PC1 in each module.}
-\item{\code{vs}}{List of lists. Each inner list contains loading vectors (weights) for PC1 in each module.}
-\item{\code{module_assignment}}{Original vector of module assignments.}
-\item{\code{module_matrices}}{List of lists. Each sublist contains the expression matrix for each module and group.}
-\item{\code{module_sizes}}{List of vectors of module sizes (number of variables per module).}
-\item{\code{module_signs}}{List of vectors of sign changes for eigengenes.}
-}
+List with original PCs, var_exp, vs, module_matrices,
+module_colors, module_sizes, module_assignment, module_signs, and
+optional bootstrap list (PCs, var_exp, vs, module_signs, samples).
 }
 \description{
-Applies sparse PCA to each module in each dataset,
-storing weights, explained variance, and the first principal component.
+Fits SPCA to the original data and optionally to bootstrap resamples.
+Input expression matrices must contain no missing values.
 }
 \details{
-Each module is extracted based on \code{module_assignment}.
-If missing values are present, they are imputed using KNN imputation from \pkg{impute}.
+Bootstrap resampling may be used to assess the stability of
+variable selection under repeated sampling.
 
-The SPCA is performed using the \code{\link[elasticnet]{spca}}
-function from the \pkg{elasticnet} package, with a single component (PC1) extracted per module.
-The sign of each PC is adjusted to match the average expression direction for interpretability.
+#' @examples
+data("seam_demo", package = "seam")
+fit = spca_all_modules(
+seam_demo$expression_data,
+seam_demo$module_assignment,
+lambda = 0.05,
+bootstrap = FALSE
+)
+fit$var_exp
 }

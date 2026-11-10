@@ -1,139 +1,126 @@
-#' Plot variable activity statuses as a stacked bar chart
+#' Plot variable activity statuses as a stacked barplot
 #'
-#' This function visualizes the distribution of variable activity statuses 
-#' using stacked bar charts. 
-#' Activity statuses include three main states **active**, **dead**, and **undead**.
-#' Function is able to incorporate both groups and modules.
+#' Displays counts of original SPCA activity classifications across modules
+#' as a stacked barplot. Statuses are differentiated by colour.
+#'
+#' @param spca_data Result of spca_all_modules() or spca_all_modules_grid().
+#' @param return_information `TRUE` for refined undead classifications,
+#'   `FALSE` for raw selection, or `"both"` to print both plots.
+#' @param modules Module labels to plot, or `"all"` (default).
+#' @param threshold Absolute within-group correlation threshold for reclassification to undead status.
+#' @param labels Group labels, if present, in the same order as the expression data.
+#' @param cex Base text size.
+#' @param col_both_active Color for variables selected in all groups.
+#' @param col_active Colors for variables selected in exactly one group;
+#'   one color per group, in `labels` order.
+#' @param col_dead Color for variables excluded in every group.
+#' @param col_both_undead Color for variables undead in all groups.
+#' @param col_undead Colors for variables undead in exactly one group;
+#'   one color per group, in `labels` order.
+#' @param xlab,ylab Axis labels.
 #' 
-#' @param spca_data A list containing SPCA decomposition results from the 
-#' function \code{spca_all_modules} or \code{spca_all_modules_grid}.
-#' @param labels Character vector. Provides group labels. 
-#' These labels are used for activity assignment.
-#' @param modules Character or character vector. Allows for module selection. Defaults to \code{"all"}.
-#' @param return_information Logical. If \code{FALSE}, returns only raw activity 
-#' assignments. If \code{TRUE} performs additional correlation-based checks to 
-#' detect **undead** variables and updates the activity status accordingly. 
-#' Defaults to \code{TRUE}.
-#' @param threshold Numeric. The correlation threshold used to determine 
-#' whether a **dead** variable highly correlated with an active variable, 
-#' suggesting it should be assigned the status **undead**. 
-#' Default value is 0.8.
-#' @param cex Numeric. Font size for plot elements. 
-#' Passed to \code{theme_classic()} argument. 
-#' Defaults to 20.
-#' @param col_both_active Color for variables that are active in both groups. 
-#' Default is 3 (green).
-#' @param col_active Color or vector of colors if groups are present. 
-#' Used for plotting points of **active** variables. 
-#' @param col_dead Color for **dead** variables. 
-#' Defaults to 8 (grey).
-#' @param col_both_undead Color for **undead** variables. 
-#' Default is \code{"lightgrey"}.
-#' @param col_undead Color or vector of colors if groups are present. 
-#' Used for plotting points of **undead** variables.
-#' @param xlab Character. X-axis label.
-#' @param ylab Character. Y-axis label.
-#'
-#' @details
-#' The function determines activity states based on whether the SPCA weights
-#' for a variables are zero or non-zero.
-#' Variables labeled **both_dead** but showing strong intra-module correlations 
-#' with active variables are reclassified as **undead** 
-#' for interpretability if option \code{return_information = TRUE}.
+#' @return A named list of ggplot objects is returned invisibly. Multiple plots are printed separately.
 #' 
-#' For details about activity statuses refer to \code{\link{compute_activity}}.
-#'
-#' @return A (\code{ggplot}) showing the activity distribution per module. 
-#'
+#' @examples
+#' data("seam_demo", package = "seam")
+#' fit = spca_all_modules(
+#'  seam_demo$expression_data,
+#'  seam_demo$module_assignment,
+#'  lambda = 0.05, 
+#'  bootstrap = FALSE
+#' )
+#' plot_activity_bar(
+#'  fit, 
+#'  labels = seam_demo$labels
+#' )
+#' 
 #' @export
-
 plot_activity_bar = function(
-    spca_data, 
-    return_information = TRUE, 
+    spca_data,
+    return_information = TRUE,
     modules = "all",
-    threshold = 0.6, 
+    threshold = 0.6,
     labels,
-    cex = 20, 
-    col_both_active = 3,
-    col_active,
-    col_dead = 8,
+    cex = 20,
+    col_both_active = "forestgreen",
+    col_active = NULL,
+    col_dead = "grey55",
     col_both_undead = "lightgrey",
-    col_undead,
-    xlab = "Module", 
+    col_undead = NULL,
+    xlab = "Module",
     ylab = "Count"){
-  
-  if(!is.list(spca_data)){
-    stop("Invalid spca_data argument, must be a list.")
+
+  if(!is.list(spca_data) || is.null(spca_data$module_colors) || is.null(spca_data$PCs)) stop("Invalid spca_data.")
+  nsets = length(spca_data$PCs)
+  if(length(labels) != nsets || anyNA(labels) || anyDuplicated(labels) || any(!nzchar(labels))){
+    stop("Provide unique labels, one per group, without '-'.")
   }
-  
-  if(!is.numeric(threshold)){
-    stop("Invalid threshold argument value.")
+  if(!is.numeric(threshold) || length(threshold) != 1 || !is.finite(threshold) || threshold <= 0 || threshold >= 1){
+    stop("threshold argument value must be a number between 0 and 1.")
   }
-  
-  if(threshold <= 0 | threshold >= 1){
-    warning("Threshold argument value should be between 0 and 1.")
+  if(!(return_information == TRUE || return_information == FALSE || return_information == "both")){
+    stop('return_information must be TRUE, FALSE, or "both".')
   }
-  
-  if(length(labels) != length(spca_data$PCs)){
-    stop("Length of labels does not coincide with number of groups in spca_data.")
+  all_modules = as.character(spca_data$module_colors)
+  selected = if(length(modules) == 1 && identical(modules, "all"))
+    all_modules else as.character(modules)
+  if(!length(selected) || anyNA(selected) || anyDuplicated(selected) || !all(selected %in% all_modules)){
+    stop("Unknown module in modules.")
+  } 
+  if(is.null(col_active)) col_active = grDevices::hcl.colors(nsets, "Dark 3")
+  if(is.null(col_undead)) col_undead = grDevices::adjustcolor(col_active, alpha.f = 0.5)
+  if(length(col_active) != nsets || length(col_undead) != nsets){
+    stop("col_active and col_undead must contain one color per group.")
   }
-  
-  if(any(is.na(spca_data$module_colors))) {
-    ticks_theme = element_blank()
-    axis_labels = element_blank()
-    xlab = element_blank()
-  } else {
-    ticks_theme = element_line()
-    axis_labels = element_text(size = cex)
-    xlab = xlab
-  }
-  
-  current_module_colors = if(modules[1] == "all"){spca_data$module_colors}else{modules} 
-  current_module_sizes = spca_data$module_sizes[match(current_module_colors, spca_data$module_colors)]
-  
-  if(return_information == FALSE | return_information == "both"){
-    
-    activity_table = compute_activity(
-      spca_data = spca_data, 
-      return_information = FALSE,
+
+  # prepare colours
+  palette = c(
+    dead = col_dead,
+    active = col_both_active,
+    stats::setNames(col_active, paste0("active_", labels)),
+    undead = col_both_undead,
+    stats::setNames(col_undead, paste0("undead_", labels))
+  )
+
+  # prepare plot data
+  sizes = spca_data$module_sizes[match(selected, all_modules)]
+  tick_labels = stats::setNames(paste0(selected, " (", sizes, ")"), selected)
+
+  # plot
+  make_plot = function(refined){ # as a function to avoid duplicating code
+
+    activity = compute_activity(
+      spca_data = spca_data,
+      return_information = refined,
       threshold = threshold,
       labels = labels
-    ) |>
-      filter(.data$module %in% current_module_colors) |> 
-      mutate(module = factor(.data$module, levels = current_module_colors)) # force correct order in barplot
-    
-    p = ggplot(activity_table, aes(fill = .data$activity, x = .data$module)) + 
-      geom_bar() +
-      scale_fill_manual(values = c(col_both_active, col_active, col_dead, "black")) + 
-      scale_x_discrete(labels = paste(current_module_colors, ' (', current_module_sizes, ')', sep = '')) + 
-      theme_classic(base_size = cex) + 
-      labs(x = xlab, y = ylab) + 
-      theme(axis.ticks = ticks_theme,
-            axis.text.x = axis_labels)
-    
+    )
+
+    activity = activity[as.character(activity$module) %in% selected, , drop = FALSE]
+    activity$module = factor(as.character(activity$module), levels = selected)
+    observed = unique(as.character(activity$activity))
+    status_order = c("active", paste0("active_", labels), "dead", "undead", paste0("undead_", labels))
+    activity$activity = factor(as.character(activity$activity), levels = status_order)
+
+    p = ggplot2::ggplot(activity, ggplot2::aes(x = .data$module, fill = .data$activity)) +
+      ggplot2::geom_bar() +
+      ggplot2::scale_fill_manual(values = palette, drop = TRUE) +
+      ggplot2::scale_x_discrete(labels = tick_labels, drop = FALSE) +
+      ggplot2::theme_classic(base_size = cex) +
+      ggplot2::labs(x = xlab, y = ylab, fill = "Activity")
+    if(length(all_modules) == 1 && identical(all_modules, "all")){
+      p = p + ggplot2::theme(axis.ticks.x = ggplot2::element_blank(), axis.text.x = ggplot2::element_blank()) +
+        ggplot2::labs(x = NULL)
+    }
+
     print(p)
+    p
   }
-  
-  if(return_information == TRUE | return_information == "both"){
-    
-    activity_table = compute_activity(
-      spca_data = spca_data, 
-      return_information = TRUE,
-      threshold = threshold,
-      labels = labels
-    ) |>
-      filter(.data$module %in% current_module_colors) |> 
-      mutate(module = factor(.data$module, levels = current_module_colors)) # force correct order in barplot
-    
-    p = ggplot(activity_table, aes(fill = .data$activity, x = .data$module)) + 
-      geom_bar() +
-      scale_fill_manual(values = c(col_both_active, col_active, col_dead, col_both_undead, col_undead)) +
-      scale_x_discrete(labels = paste(current_module_colors, ' (', current_module_sizes, ')', sep = '')) + 
-      theme_classic(base_size = cex) + 
-      labs(x = xlab, y = ylab) + 
-      theme(axis.ticks = ticks_theme,
-            axis.text.x = axis_labels)
-    
-    print(p)
+
+  if(identical(return_information, "both")){
+    plots = list(raw = make_plot(FALSE), refined = make_plot(TRUE))
+    return(invisible(plots))
   }
+
+  invisible(make_plot(return_information))
 }

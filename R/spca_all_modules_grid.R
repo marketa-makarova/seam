@@ -1,166 +1,174 @@
-#' Perform SPCA across all groups and modules with different sparsity
+#' Perform SPCA across groups and modules with module-specific sparsity
 #'
-#' Applies sparse PCA to each module in each dataset, 
-#' storing weights, explained variance, and the first principal component.
+#' Fits SPCA to the original data and optionally to bootstrap resamples.
+#' Input expression matrices must contain no missing values.
+#' Allows for different sparsity penalties across modules.
 #'
-#' @param expression_data A list containing expression matrices for each group.
-#' @param module_assignment Character vector. Assigns
-#'  module/cluster to each variable by color. If no clustering is present, this
-#'  argument may be set to \code{NA}.
-#' @param modules Character or character vector. Allows for module selection. Defaults to \code{"all"}.
-#' @param lambdas A numeric vector of lambda values specifying the value for each module/cluster. Sparsity penalty parameter passed to \code{\link[elasticnet]{spca}}.
+#' @param expression_data List of numeric expression matrices (samples in rows).
+#' @param module_assignment Vector of modules assigned to variables. One module per variable.
+#' @param lambdas Non-negative sparsity penalties passed to the `para` argument of [elasticnet::spca()].
+#'   For no module assignment, supply a single value.
+#' @param modules Module labels to plot, or `"all"` (default).
+#' @param bootstrap Logical. Whether to compute bootstrap replicates.
+#' @param n Number of bootstrap replicates.
+#' 
+#' @details Bootstrap resampling may be used to assess the stability of 
+#' variable selection under repeated sampling. 
 #'
-#' @return A list with the following elements:
-#' \describe{
-#'   \item{\code{PCs}}{List of matrices. Each matrix contains the first SPCA component (PC1) for each module, per dataset.}
-#'   \item{\code{var_exp}}{List of matrices. Each matrix holds the variance explained by PC1 in each module.}
-#'   \item{\code{vs}}{List of lists. Each inner list contains loading vectors (weights) for PC1 in each module.}
-#'   \item{\code{module_assignment}}{Original vector of module assignments.}
-#'   \item{\code{module_matrices}}{List of lists. Each sublist contains the expression matrix for each module and group.}
-#'   \item{\code{module_colors}}{Module color order used.}
-#'   \item{\code{module_sizes}}{List of vectors of module sizes (number of variables per module).}
-#'   \item{\code{module_signs}}{List of vectors of sign changes for eigengenes.}
-#' }
-#'
-#' @details
-#' Each module is extracted based on \code{module_assignment}. 
-#' If missing values are present, they are imputed using KNN imputation from \pkg{impute}.
-#'
-#' The SPCA is performed using the \code{\link[elasticnet]{spca}} 
-#' function from the \pkg{elasticnet} package, with a single component (PC1) extracted per module.
-#' The sign of each PC is adjusted to match the average expression direction for interpretability.
-#'
+#' @return List with original PCs, var_exp, vs, module_matrices,
+#' module_colors, module_sizes, module_assignment, module_signs, and
+#' optional bootstrap list (PCs, var_exp, vs, module_signs, samples).
+#' 
+#' @examples
+#' data("seam_demo", package = "seam")
+#' fit = spca_all_modules_grid(
+#'  seam_demo$expression_data,
+#'  seam_demo$module_assignment,
+#'  lambdas = c(blue = 0.05, red = 0.08),
+#'  bootstrap = FALSE
+#' )
+#' 
 #' @export
+spca_all_modules_grid = function(expression_data, module_assignment,
+                                  modules = "all", lambdas,
+                                  bootstrap = TRUE, n = 100){
 
-spca_all_modules_grid <- function(
-  expression_data, 
-  module_assignment, 
-  modules = "all",
-  lambdas){
-  
-  if(any(lambdas < 0)) { stop("Select non-negative lambda.") }
-  
-  if(!is.list(expression_data)){
-    stop("Invalid expression_data argument, must be a list.")
+  if(!is.list(expression_data) || length(expression_data) == 0 || any(vapply(expression_data, anyNA, logical(1)))){
+    stop("expression_data must be a non-empty list of matrices without missing values.")
   }
-  
-  nsets = length(expression_data)
-  
-  if(any(!is.na(module_assignment))){
-    for(i in 1:nsets){
-      if(length(module_assignment) != ncol(expression_data[[i]])){
-        stop("Number of variables in expression_data does not coincide with length of module_assignment.")
-      }
+  if(bootstrap && (length(n) != 1 || is.na(n) || n < 1 || n != as.integer(n))){
+    stop("n must be a positive integer.")
+  }
+  if(any(vapply(expression_data, anyNA, logical(1)))){
+    stop("Expression data contains missing values. Please handle missing values before running SPCA.")
+  }
+  expression_data = lapply(expression_data, as.matrix)
+  n_sets = length(expression_data)
+  for(set in seq_len(n_sets)){
+    x = expression_data[[set]]
+    if(!is.numeric(x) || anyNA(x) || any(!is.finite(x))){
+      stop("Expression matrices must contain finite numeric values without missing data.")
+    }
+    if(nrow(x) < 2 || ncol(x) < 2){
+      stop("Each expression matrix must have at least two rows and columns.")
     }
   }
-
-  PCs = list() # principal components
-  var_exp_list = list() # explained variance
-  vs = list() # weights, eigenvectors, right singular vectors
-  xs = list()
-
-
-  if(sum(modules == "all") == 1){
-    module_colors = unique(module_assignment)
+  no_modules = length(module_assignment) == 1 && is.na(module_assignment)
+  if(no_modules){
+    module_colors = "all"
   } else {
-    module_colors = modules
-  }
-  
-  module_matrices = list(length = nsets)
-  module_signs = list(length = nsets)
-  for(set in 1:nsets){
-    module_matrices[[set]] = list(length = length(module_colors))
-    module_signs[[set]] = numeric(length = length(unique(module_assignment)))
-  }
-  
-  if(any(is.na(module_assignment))){
-    for(set in 1:nsets){
-      
-      var_exp_matrix = matrix(NA, nrow = 1, ncol = 1) # save the variance explained here
-      x = as.matrix(expression_data[[set]])
-      PC1 = matrix(NA, nrow = nrow(x), ncol = 1)
-      curr_vs = list()
-      i = 1
-      xs[[set]] = list()
-      
-      # if there are NAs, fill them using KNN
-      if(sum(is.na(x)) != 0){
-        xt = t(x)
-        xtimp = impute.knn(xt, k = min(10, nrow(xt) - 1))
-        x = t(xtimp$data)
-      }
-      
-      # perform sparse pca
-      spca_list = spca(x, K = 1, type = "predictor", sparse = "penalty", para = lambdas[1])
-      
-      # save variables
-      y = x %*% spca_list$loadings
-      PC1[, 1] = if(cor(y[, 1], apply(x, 1, sum) / ncol(x)) > 0){ y[, 1] } else { - y[, 1]}
-      var_exp_matrix[1, ] = spca_list$pev
-      curr_vs[[1]] = spca_list$loadings |> as.vector()
-      
-      module_matrices[[set]][[1]] = x
-      PCs[[set]] = PC1
-      var_exp_list[[set]] = var_exp_matrix
-      vs[[set]] = curr_vs
-      
+    if(anyNA(module_assignment) || any(vapply(expression_data, ncol, integer(1)) != length(module_assignment))){
+      stop("module_assignment must contain one non-missing label per variable.")
     }
-  } else {
-    
-    for(set in 1:nsets){
-      var_exp_matrix = matrix(NA, nrow = length(module_colors), ncol = 1) # save the variance explained here
-      fullx = expression_data[[set]]
-      PC1 = matrix(NA, nrow = nrow(fullx), ncol = length(module_colors))
-      curr_vs = list()
-      i = 1
-      xs[[set]] = list()
-      
-      # iterate over modules/colors
-      for(color in module_colors){
-        x = as.matrix(fullx[, as.character(module_assignment) == as.character(color)])
-        
-        # if there are NAs, fill them using KNN
-        if(sum(is.na(x)) != 0){
-          xt = t(x)
-          xtimp = impute.knn(xt, k = min(10, nrow(xt) - 1))
-          x = t(xtimp$data)
+    module_colors = if(length(modules) == 1 && modules == "all"){
+      unique(as.character(module_assignment))
+    } else {
+      as.character(modules)
+    }
+    if(anyDuplicated(module_colors) || !all(module_colors %in% module_assignment)){
+      stop("Selected modules must be unique and present in module_assignment.")
+    }
+  }
+  n_modules = length(module_colors)
+  if(!is.numeric(lambdas) || length(lambdas) != n_modules || anyNA(lambdas) || any(!is.finite(lambdas)) || any(lambdas < 0)){
+    stop("Supply one finite non-negative lambda per selected module.")
+  }
+  if(!is.null(names(lambdas)) && all(module_colors %in% names(lambdas))){
+    lambdas = lambdas[module_colors]
+  }
+
+  # prepare variables
+  names(lambdas) = module_colors
+  PCs = vector("list", n_sets)
+  var_exp = vector("list", n_sets)
+  vs = vector("list", n_sets)
+  module_matrices = vector("list", n_sets)
+  module_signs = vector("list", n_sets)
+  boot = NULL
+  if(bootstrap){
+    boot = list(
+      PCs = vector("list", n_sets),
+      var_exp = vector("list", n_sets),
+      vs = vector("list", n_sets),
+      module_signs = vector("list", n_sets),
+      samples = vector("list", n_sets)
+    )
+  }
+
+  for(set in seq_len(n_sets)){
+    full_x = expression_data[[set]]
+    n_samples = nrow(full_x)
+    module_matrices[[set]] = vector("list", n_modules)
+    vs[[set]] = vector("list", n_modules)
+    names(module_matrices[[set]]) = names(vs[[set]]) = module_colors
+
+    PCs[[set]] = matrix(NA_real_, n_samples, n_modules, dimnames = list(rownames(full_x), module_colors))
+    var_exp[[set]] = matrix(NA_real_, n_modules, 1, dimnames = list(module_colors, NULL))
+    module_signs[[set]] = setNames(numeric(n_modules), module_colors)
+
+    for(i in seq_len(n_modules)){
+      x = if(no_modules) full_x else full_x[, as.character(module_assignment) == module_colors[i], drop = FALSE]
+      module_matrices[[set]][[i]] = x
+
+      fit = elasticnet::spca(x, K = 1, type = "predictor", sparse = "penalty", para = lambdas[i])
+      raw_weights = as.vector(fit$loadings)
+      raw_scores = as.vector(x %*% raw_weights)
+      direction = suppressWarnings(cor(raw_scores, rowMeans(x)))
+      sign = if(is.finite(direction) && direction > 0) 1 else -1
+
+      weights = sign * raw_weights
+      names(weights) = colnames(x)
+      vs[[set]][[i]] = weights
+      PCs[[set]][, i] = sign * raw_scores
+      var_exp[[set]][i, 1] = fit$pev
+      module_signs[[set]][i] = sign
+    }
+
+    if(bootstrap){
+      boot$PCs[[set]] = array(NA_real_, c(n_samples, n_modules, n), dimnames = list(NULL, module_colors, NULL))
+      boot$var_exp[[set]] = matrix(NA_real_, n, n_modules, dimnames = list(NULL, module_colors))
+      boot$module_signs[[set]] = matrix(NA_real_, n, n_modules, dimnames = list(NULL, module_colors))
+      boot$samples[[set]] = matrix(NA_integer_, n, n_samples)
+      boot$vs[[set]] = vector("list", n_modules)
+      names(boot$vs[[set]]) = module_colors
+
+      for(i in seq_len(n_modules)){
+        x = module_matrices[[set]][[i]]
+        boot$vs[[set]][[i]] = matrix(NA_real_, n, ncol(x), dimnames = list(NULL, colnames(x)))
+      }
+
+      for(b in seq_len(n)){
+        sampled_rows = sample.int(n_samples, n_samples, replace = TRUE)
+        boot$samples[[set]][b, ] = sampled_rows
+
+        for(i in seq_len(n_modules)){
+          x = module_matrices[[set]][[i]][sampled_rows, , drop = FALSE]
+          fit = elasticnet::spca(x, K = 1, type = "predictor", sparse = "penalty", para = lambdas[i])
+          raw_weights = as.vector(fit$loadings)
+
+          # align each bootstrap component to the original loading vector
+          sign = if(sum(raw_weights * vs[[set]][[i]]) >= 0) 1 else -1
+          boot$vs[[set]][[i]][b, ] = sign * raw_weights
+          boot$PCs[[set]][, i, b] = sign * as.vector(x %*% raw_weights)
+          boot$var_exp[[set]][b, i] = fit$pev
+          boot$module_signs[[set]][b, i] = sign
         }
-        
-        # perform sparse pca
-        spca_list = spca(x, K = 1, type = "predictor", sparse = "penalty", para = lambdas[which(module_colors == color)])
-        
-        # save variables
-        y = x %*% spca_list$loadings
-        PC1[, which(module_colors == color)] = if(cor(y[, 1], apply(x, 1, sum) / ncol(x)) > 0){ y[, 1] } else { - y[, 1]}
-        var_exp_matrix[which(module_colors == color), ] = spca_list$pev
-        curr_vs[[which(module_colors == color)]] = spca_list$loadings |> as.vector()
-        
-        module_matrices[[set]][[which(module_colors == color)]] = x
-        module_signs[[set]][which(module_colors == color)] = if(cor(y[, 1], apply(x, 1, sum) / ncol(x)) > 0){1}else{-1}
-        
       }
-      
-      colnames(PC1) = module_colors
-      names(module_matrices[[set]]) = module_colors
-      
-      PCs[[set]] = PC1
-      var_exp_list[[set]] = var_exp_matrix
-      vs[[set]] = curr_vs
-      
     }
   }
-  
-  module_sizes = unlist(lapply(module_matrices[[1]], ncol))
-  names(module_sizes) = module_colors
-  
+
+  module_sizes = vapply(module_matrices[[1]], ncol, integer(1))
+
   return(list(
-    PCs = PCs, 
-    var_exp = var_exp_list, 
-    vs = vs, 
-    module_assignment = module_assignment, 
-    module_matrices = module_matrices, 
+    PCs = PCs,
+    var_exp = var_exp,
+    vs = vs,
+    module_assignment = module_assignment,
+    module_matrices = module_matrices,
     module_colors = module_colors,
     module_sizes = module_sizes,
     module_signs = module_signs,
-    lambdas = lambdas))
+    lambdas = lambdas,
+    bootstrap = boot
+  ))
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/plot_module_heatmaps.R
 \name{plot_module_heatmaps}
 \alias{plot_module_heatmaps}
-\title{Plot full module heatmaps, highlights dimension reduction and plots SPCA reduced module heatmaps}
+\title{Plot module correlation heatmaps and sparsified heatmaps}
 \usage{
 plot_module_heatmaps(
   spca_data,
@@ -18,59 +18,46 @@ plot_module_heatmaps(
 )
 }
 \arguments{
-\item{spca_data}{A list containing SPCA decomposition results from the
-function \code{spca_all_modules} or \code{spca_all_modules_grid}.}
+\item{spca_data}{Result of spca_all_modules() or spca_all_modules_grid().}
 
-\item{labels}{Character vector. Provides group labels.
-computed using the \code{compute_module_trait_correlations} function.}
+\item{labels}{Group labels, if present, in the same order as the expression data.}
 
-\item{modules}{Character or character vector. Allows for module selection. Defaults to \code{"all"}.}
+\item{modules}{Module labels to plot, or \code{"all"} (default).}
 
-\item{return_information}{Logical. If \code{FALSE}, returns only raw activity
-assignments. If \code{TRUE} performs additional correlation-based checks to
-detect \strong{undead} variables and updates the activity status accordingly.
-Defaults to \code{TRUE}.}
+\item{return_information}{\code{TRUE} for refined undead classifications,
+\code{FALSE} for raw selection, or \code{"both"} to print both plots.}
 
-\item{threshold}{Numeric. The correlation threshold used to determine
-whether a \strong{dead} variable highly correlated with an active variable,
-suggesting it should be assigned the status \strong{undead}.
-Default value is 0.8.}
+\item{threshold}{Absolute within-group correlation threshold for reclassification to undead status.}
 
-\item{cex}{Numeric. Font size for plot elements.
-Passed to \code{theme_classic()} argument.
-Defaults to 20.}
+\item{cex}{Base text size.}
 
-\item{midpoint}{Numeric. Midpoint for the heatmap color gradient. Default is 0.5.}
+\item{midpoint}{Midpoint of the distance color scale.}
 
-\item{col_low}{Color for low values in the heatmap. Default is \code{"darkred"}.}
-
-\item{col_mid}{Color for mid values (at midpoint) in the heatmap. Default is \code{"orange"}.}
-
-\item{col_high}{Color for high values in the heatmap. Default is \code{"white"}.}
+\item{col_low, col_mid, col_high}{Colors of the distance scale.}
 }
 \value{
-Plots heatmaps (one for each module) using \code{ggplot2}.
+A named list of ggplot objects is returned invisibly. Plots are printed separately.
 }
 \description{
-This function creates correlation-based heatmaps of expression values.
-If modules and groups are present, this is done for each module and group
-separately.
-For each instnace, three heatmaps are shown:
-full, sparse (showing which variables were assigned zero weights by SPCA),¨
-and reduced (with the aforementioned variables removed).
+The SPCA fit determines which variables are excluded. When bootstrap
+results are present, masked cells are shaded according to how often either
+variable received a zero weight across bootstrap replicates.
 }
-\details{
-For each module and each group,
-the function computes a distance matrix (1 - |correlation|) and displays three versions:
-\itemize{
-\item \strong{Full:} all variable correlations sorted using a dendrogram.
-\item \strong{Sparse:} with variable assigned zero weighs entries shown as grey.
-\item \strong{Reduced:} subset of correlations assigned non-zero SPCA weights variables.
+\examples{
+\donttest{
+data("seam_demo", package = "seam")
+fit = spca_all_modules(
+ seam_demo$expression_data,
+ seam_demo$module_assignment,
+ lambda = 0.05, 
+ bootstrap = FALSE
+)
+plot_module_heatmaps(
+ fit, 
+ labels = seam_demo$labels,
+ modules = "blue",
+ return_information = FALSE
+)
 }
 
-Clustering is based on average linkage hierarchical clustering using the full matrix.
-
-A procedure refining variable selection may be implemented using
-the \code{return_information} parameter. For more information, refer to
-\code{\link{compute_activity}} function documentation.
 }

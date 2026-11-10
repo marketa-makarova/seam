@@ -2,7 +2,7 @@
 % Please edit documentation in R/plot_module_trait_correlations.R
 \name{plot_module_trait_correlations}
 \alias{plot_module_trait_correlations}
-\title{Plot module–trait correlations using sparse and classic eigengene}
+\title{Plot module-trait correlations for sparse and classic eigengenes}
 \usage{
 plot_module_trait_correlations(
   module_trait_correlations,
@@ -12,52 +12,58 @@ plot_module_trait_correlations(
   main = NA,
   plot_avg_differences = FALSE,
   mode = "spca",
-  color_palette = blueWhiteRed(50),
+  color_palette = (grDevices::colorRampPalette(c("blue", "white", "red")))(50),
   cex = 1.2,
   show_legend = TRUE
 )
 }
 \arguments{
-\item{module_trait_correlations}{A list of module trait correlations
-computed using the \code{compute_module_trait_correlations} function.}
+\item{module_trait_correlations}{Result of compute_module_trait_correlations().}
 
-\item{labels}{Character vector. Provides group labels.}
+\item{labels}{Group labels, if present, in the same order as the expression data.}
 
-\item{modules}{Character or character vector. Allows for module selection. Defaults to \code{"all"}.
-These labels are used for activity assignment.}
+\item{modules}{Module labels to plot, or \code{"all"} (default).}
 
-\item{mfrow}{Layout of plots, default is \code{c(1, 2)}.}
+\item{mfrow}{Number of rows and columns per page (grid layout).}
 
-\item{main}{Optional title for plots. Default is \code{NA}.}
+\item{main}{Optional title. If NA, titles identify method and group.}
 
-\item{plot_avg_differences}{Logical. Indicates whether to plot RMSE between sparse eigengene-based and classic module–trait correlations. Defaults to \code{TRUE}.}
+\item{plot_avg_differences}{Show per-module RMSE across traits between
+classic and SPCA correlations; requires mode = "both".}
 
-\item{mode}{Character string, either \code{"spca"} or \code{"wgcna"}, indicating which method to use for eigengene computation. Default is \code{"spca"}.}
+\item{mode}{"spca", "classic", or "both".}
 
-\item{color_palette}{Color palette to use for heatmaps. Default is \code{blueWhiteRed(50)}.}
+\item{color_palette}{Colors for the diverging correlation scale.}
 
-\item{cex}{Numeric. Scaling factor for the heatmap text labels. Defaults to 1.2.}
+\item{cex}{Base text size.}
 
-\item{show_legend}{Logical. Default is TRUE.}
+\item{show_legend}{Logical. Whether to display color legends.}
 }
 \value{
-Produces multiple heatmaps using \code{labeledHeatmap()}.
+A named list of ggplot objects is returned invisibly. Plots are printed separately.
 }
 \description{
-This function visualizes Pearson's module–trait correlation matrices
-using both sparse and classic eigengenes
-across experimental groups.
-It also optionally plots root-mean-square errors (RMSE)
-between methods and group correlations.
+Cell colors represent strength of correlations.
+When bootstrap results exist, 95\% percentile intervals are also included.
 }
-\details{
-This function produces several heatmaps:
-\itemize{
-\item Heatmaps for each method (sparse and classic) and each group.
-\item RMSE heatmap between sparse eigengene-based and classic correlations (optional).
-\item Consensus correlation heatmap for each module across groups (optional).
-}
+\examples{
+data("seam_demo", package = "seam")
+fit = spca_all_modules(
+ seam_demo$expression_data,
+ seam_demo$module_assignment,
+ lambda = 0.05, 
+ bootstrap = FALSE
+)
+mtc = compute_module_trait_correlations(
+ seam_demo$trait_data, 
+ fit, 
+ seam_demo$module_assignment,
+ mode = "both"
+)
+plot_module_trait_correlations(
+ mtc, 
+ labels = seam_demo$labels,
+ mode = "spca"
+)
 
-Consensus correlations reflect agreement in sign and strength between groups:
-the weaker (more conservative) correlation is retained if both signs agree.
 }

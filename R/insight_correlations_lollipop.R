@@ -1,323 +1,197 @@
-#' Visualize variable–trait correlations as lollipop plot
+#' Lollipop plot of variable-trait correlations and SPCA-weighted correlations
 #'
-#' This function creates lollipop-style visualizations of 
-#' correlations between variables and external clinical traits. 
-#' If groups are present, it highlights 
-#' differences between them using SPCA as feature selection method. Optionally, 
-#' weighted correlations can be used to gain insight into how variables contribute
-#' to sparse eigengene-trait correlations. If modules are present, 
-#' each module is plotted separately.
+#' Selects module-trait pairs whose SPCA eigengene correlation
+#' exceeds interest_threshold in at least one group. For each pair, plots
+#' variable-trait correlations and/or correlations multiplied by SPCA weights.
+#' Original estimates are used whether or not spca_data contains bootstrap fits.
 #'
-#' @param module_trait_correlations A list of module trait correlations
-#' computed using the \code{compute_module_trait_correlations} function.
-#' @param spca_data A list containing SPCA decomposition results from the 
-#' function \code{spca_all_modules} or \code{spca_all_modules_grid}.
-#' @param type Character. Specifies which type of plot to create, options are
-#' \code{"weighted"}, \code{"classic"} or \code{"both"}. Defaults to \code{"both"}.
-#' @param interest_threshold Numeric. Only module–trait correlations greater
-#' than this value (in absolute terms) are considered interesting and plotted. 
-#' Default is 0.6.
-#' @param cex Numeric. Font size for plot elements. 
-#' Passed to \code{theme_classic()} argument. 
-#' Defaults to 20.
-#' @param cex_point Numeric. Size of points visualising correlation. 
-#' Defaults to 20.
-#' @param labels Character vector. Provides group labels. 
-#' These labels are used for activity assignment.
-#' @param n Integer. The number of top variables 
-#' (by absolute weighted correlation) to label on the y-axis. 
-#' Defaults to 5.
-#' @param xlab Character. X-axis label.
-#' @param ylab Character. Y-axis label.
-#' @param col Color or vector of colors if groups are present. 
-#' Used for plotting points. 
-#' @param col_connective Color of connective lines between correlation values. 
-#' Defaults to 8 (grey).
-#' @param col_active Color for variables that are active in both groups. 
-#' Default is 3 (green).
-#' @param y_dodge Integer. Used to spread out y-axis labels to avoid label overlap. 
-#' Defaults to 2.
-#'
-#' @details
-#' The behavior of the plot depends on the value of the parameter \code{type}:
-#' \itemize{
-#'   \item \code{"classic"} — plots standard variable–trait correlations as a lollipop plot.
-#'   Correlations are computed directly between each variable and the trait.
+#' @param module_trait_correlations Result of compute_module_trait_correlations()
+#'   calculated with mode = "spca" or "both".
+#' @param spca_data Result of spca_all_modules() or spca_all_modules_grid().
+#' @param type One of "classic" (unweighted), "weighted", or "both".
+#' @param interest_threshold Miminal absolute module-trait correlation threshold.
+#' @param cex Base text size.
+#' @param cex_point Point size.
+#' @param labels Group labels, if present, in the same order as the expression data.
+#' @param n Number of top variable labels to display per plot.
+#' @param xlab,ylab Axis labels.
+#' @param col Optional colors for the groups.
+#' @param col_active Color of segments for variables active in multiple groups.
+#' @param y_dodge Number of rows used to dodge variable labels.
 #' 
-#'   \item \code{"weighted"} — plots weighted variable–trait correlations, defined as the
-#'   variable–trait correlation multiplied by the SPCA weight assigned to the variable.
-#'   This emphasizes variables that are both strongly associated with the trait and
-#'   strongly weighted by SPCA.
+#' @return A named list of ggplot objects is returned invisibly. Plots are printed separately.
 #' 
-#'   \item \code{"both"} — produces a two-panel plot showing \code{"classic"} (unweighted)
-#'   and \code{"weighted"} correlations side by side for direct comparison.
+#' @examples
+#' \donttest{
+#' data("seam_demo", package = "seam")
+#' fit = spca_all_modules(
+#'  seam_demo$expression_data,
+#'  seam_demo$module_assignment,
+#'  lambda = 0.05, 
+#'  bootstrap = FALSE
+#' )
+#' mtc = compute_module_trait_correlations(
+#'  seam_demo$trait_data, 
+#'  fit,
+#'  seam_demo$module_assignment,
+#'  mode = "both")
+#' insight_correlations_lollipop(
+#'  mtc, 
+#'  fit, 
+#'  labels = seam_demo$labels,
+#'  interest_threshold = 0.2, 
+#'  n = 5
+#' )
 #' }
-#'
-#' If multiple groups are present, variable-trait correlations are computed separately for each group.
-#' Group-specific correlations are displayed within the same plot and are differentiated
-#' by color to facilitate comparison of group-wise association patterns.
-#'
-#' The parameter \code{n} controls how many variables are labeled on the y-axis.
-#' Specifically, only the top \code{n} variables with the strongest absolute (weighted or
-#' unweighted, depending on \code{type}) correlations are labeled.
-#' If multiple labeled variables would overlap on the y-axis, the \code{y_dodge} parameter
-#' is used to vertically offset labels to improve readability.
-#'
-#' This visualization facilitates identification of biologically relevant drivers of
-#' module–trait associations. In particular, weighted correlations can reveal key driver
-#' variables that differentiate between groups.
 #' 
 #' @export
-insight_correlations_lollipop = function(
-    module_trait_correlations, 
-    spca_data, 
+
+insight_correlations_lollipop <- function(
+    module_trait_correlations,
+    spca_data,
     type = "both",
-    interest_threshold = 0.6, 
-    cex = 20, 
+    interest_threshold = 0.6,
+    cex = 20,
     cex_point = 5,
-    labels, 
+    labels,
     n = 10,
     xlab = "",
     ylab = "Weighted correlations",
-    col,
-    col_connective = 8,
+    col = NULL,
     col_active = 3,
     y_dodge = 2){
-  
-  if(!(type %in% c("classic", "weighted", "both"))){
-    stop("Type can be either classic, weighted, or both.")
+
+  if(!type %in% c("classic", "weighted", "both")){
+    stop("Type must be 'classic', 'weighted', or 'both'.")
   }
-  
-  if(!is.list(spca_data)){
-    stop("Invalid spca_data argument, must be a list.")
+  if(!is.list(spca_data) || is.null(module_trait_correlations$mtc_spca)){
+    stop("spca_data and SPCA module-trait correlations are required.")
   }
-  
-  if(!is.numeric(interest_threshold)){
-    stop("Invalid interest_threshold argument value.")
+  if(!is.numeric(interest_threshold) || length(interest_threshold) != 1 ||
+     !is.finite(interest_threshold) || interest_threshold <= 0 || interest_threshold >= 1){
+    stop("interest_threshold must be between 0 and 1.")
   }
-  
-  if(interest_threshold <= 0 | interest_threshold >= 1){
-    warning("Threshold argument value should be between 0 and 1.")
-  }
-  
-  if(length(labels) != length(spca_data$PCs)){
-    stop("Length of labels does not coincide with number of groups in spca_data.")
-  }
-  
   nsets = length(spca_data$vs)
-  
-  # select positions of interesting modules & traits
-  positions = matrix(NA, ncol = 2, nrow = 0)
-  for(set in 1:nsets){
-    positions = rbind(positions, which(abs(module_trait_correlations[[1]][[set]]) > interest_threshold, arr.ind = TRUE) |> as.data.frame() |> mutate(set = set))
+  if(length(labels) != nsets || length(module_trait_correlations$mtc_spca) != nsets){
+    stop("Group labels and correlation results must match spca_data.")
   }
-  positions$trait = colnames(module_trait_correlations[[1]][[1]])[positions$col]
-  positions$module = rownames(module_trait_correlations[[1]][[1]])[positions$row]
-  
-  if(nrow(positions) == 0){return(paste("No interesting correlations, lower interest_threshold."))}
-  
-  # compute correlations
-  for(i in 1:nrow(positions)){
-    set = positions$set[i]
-    # create correlations
-    cors = data.frame(variable_id = colnames(spca_data$module_matrices[[set]][[positions[i, 1]]]))
-    for(set in 1:nsets){
-      new_column = paste("cor", labels[set], sep = "_")
-      cors = cors |>
-        mutate(
-          !!new_column := cor(
-            spca_data$module_matrices[[set]][[positions[i, 1]]], 
-            module_trait_correlations$trait_data[[set]][positions[i, 2]],
-            use = "pairwise.complete.obs"
-          ) |> as.vector()
+  module_colors = spca_data$module_colors
+  reference = module_trait_correlations$mtc_spca[[1]]
+  if(is.null(colnames(reference))){
+    stop("Module-trait correlation matrices need trait column names.")
+  }
+
+  # select module-trait combinations above interest_threshold
+  interesting = matrix(FALSE, nrow(reference), ncol(reference), dimnames = dimnames(reference))
+  for(set in seq_len(nsets)){
+    current = module_trait_correlations$mtc_spca[[set]]
+    interesting = interesting | (is.finite(current) & abs(current) > interest_threshold)
+  }
+  positions = which(interesting, arr.ind = TRUE)
+  if(nrow(positions) == 0){
+    message("No interesting correlations; lower interest_threshold.")
+    return(invisible(list()))
+  }
+
+  # prepare necessary variables
+  activity_table = compute_activity(spca_data = spca_data,
+                                    labels = labels,
+                                    return_information = FALSE)
+  plots = list()
+  group_colors = if(is.null(col)){
+    stats::setNames(grDevices::hcl.colors(nsets, "Dark 3"), labels)
+  } else {
+    stats::setNames(rep(col, length.out = nsets), labels)
+  }
+
+  # prepare data for plotting
+  for(k in seq_len(nrow(positions))){
+    module_index = positions[k, 1]
+    trait_index = positions[k, 2]
+    module_name = module_colors[module_index]
+    trait_name = colnames(reference)[trait_index]
+    variables = colnames(spca_data$module_matrices[[1]][[module_index]])
+    if(is.null(variables)){ stop("Expression matrices must have variable column names.") }
+    cors = data.frame(variable_id = variables, module = module_name,
+                      stringsAsFactors = FALSE)
+
+    for(set in seq_len(nsets)){
+      x = spca_data$module_matrices[[set]][[module_index]]
+      trait = module_trait_correlations$trait_data[[set]][, trait_index]
+      if(!identical(colnames(x), variables)){ stop("Variable order must be identical across groups within each module.") }
+      cors[[paste0("cor_", labels[set])]] = as.vector(
+        stats::cor(x, trait, use = "pairwise.complete.obs"))
+    }
+
+    activity = activity_table[
+      activity_table$module == module_name & activity_table$variable_id %in% variables,
+      c("variable_id", "module", "activity", paste0("w_", labels)),
+      drop = FALSE
+    ]
+    cors = dplyr::left_join(cors, activity, by = c("variable_id", "module"))
+    cors = cors[cors$activity != "dead" & !is.na(cors$activity), , drop = FALSE]
+    if(nrow(cors) == 0) next
+
+    for(set in seq_len(nsets)){
+      cors[[paste0("w_cor_", labels[set])]] = cors[[paste0("w_", labels[set])]] * cors[[paste0("cor_", labels[set])]]
+    }
+
+    # rank variable labels by their largest absolute weighted correlation
+    scores = apply(abs(as.matrix(cors[, paste0("w_cor_", labels), drop = FALSE])), 1, max, na.rm = TRUE)
+    scores[!is.finite(scores)] = -Inf
+    top = head(order(scores, decreasing = TRUE), n)
+    top_ids = cors$variable_id[top]
+    cors = cors[order(cors$activity, -scores), , drop = FALSE]
+    variable_order = cors$variable_id
+    label_map = stats::setNames(ifelse(variable_order %in% top_ids, variable_order, ""), variable_order)
+
+    plot_data = list()
+    for(set in seq_len(nsets)){
+      for(method in c("unweighted", "weighted")){
+        value_col = if(method == "weighted") paste0("w_cor_", labels[set]) else paste0("cor_", labels[set])
+        plot_data[[length(plot_data) + 1]] = data.frame(
+          variable_id = cors$variable_id,
+          activity = cors$activity,
+          group = labels[set],
+          method = method,
+          value = cors[[value_col]],
+          stringsAsFactors = FALSE
         )
+      }
     }
-    
-    # create table of correlations, weights, correlations * weights
-    activity_table = compute_activity(spca_data = spca_data, labels = labels, return_information = FALSE)
-    cors =  cors |>
-      left_join(activity_table, by = join_by("variable_id")) |>
-      arrange(.data$activity) |>
-      mutate(
-        num = 1:nrow(cors),                      
-        variable_id = factor(.data$variable_id)
-      ) |>
-      mutate(
-        variable_id = reorder(.data$variable_id, .data$num, mean)
-      ) |>
-      filter(.data$activity != "dead")
-    
-    new_cols = setNames(
-      lapply(labels, function(lbl) {
-        cors[[paste0("w_", lbl)]] * cors[[paste0("cor_", lbl)]]
-      }),
-      paste0("w_cor_", labels)
-    )
-    
-    cors = bind_cols(cors, as.data.frame(new_cols))
-    
-    # find top correlations
-    top_n_cors = cors |>
-      select(all_of(paste0("w_cor_", labels))) |>
-      unlist(use.names = FALSE) |> abs() |> sort() |> tail(n)
-    
-    top_n_labels = cors |>
-      rowwise() |>
-      mutate(top_n_id = if_else(
-        any(abs(c_across(all_of(paste0("w_cor_", labels)))) %in% top_n_cors),
-        as.character(.data$variable_id),
-        "")) |>
-      ungroup() |>
-      pull(.data$top_n_id)
-    
-    # title
-    if (sum(is.na(spca_data$module_colors)) == 0) {
-      
-      cor_strings <- vapply(
-        seq_len(nsets),
-        function(set) {
-          paste0(
-            labels[set],
-            " = ",
-            round(
-              module_trait_correlations[[1]][[set]][positions[i, 1], positions[i, 2]],
-              2
-            )
-          )
-        },
-        character(1)
-      )
-      
-      classic_title <- paste0(
-        positions$module[i],
-        " module correlated with ",
-        positions$trait[i],
-        "\nSPCA correlations: ",
-        paste(cor_strings, collapse = ", ")
-      )
+    plot_data = do.call(rbind, plot_data)
+    plot_data$variable_id = factor(plot_data$variable_id, levels = rev(variable_order))
+    plot_data$group = factor(plot_data$group, levels = labels)
+
+    if(type == "classic") plot_data = plot_data[plot_data$method == "unweighted", ]
+    if(type == "weighted") plot_data = plot_data[plot_data$method == "weighted", ]
+
+    correlations = vapply(seq_len(nsets), function(set){
+      sprintf("%s = %.2f", labels[set], module_trait_correlations$mtc_spca[[set]][module_index, trait_index])
+    }, character(1))
+    title = if(length(spca_data$module_colors) == 1 && spca_data$module_colors[1] == "all"){
+      paste0("Correlation with ", trait_name)
     } else {
-      
-      cor_strings <- vapply(
-        seq_len(nsets),
-        function(set) {
-          paste0(
-            labels[set],
-            " = ",
-            round(
-              module_trait_correlations[[1]][[set]][positions[i, 1], positions[i, 2]],
-              2
-            )
-          )
-        },
-        character(1)
-      )
-      
-      classic_title <- paste0(
-        "correlation with ",
-        positions$trait[i],
-        "\nSPCA correlations: ",
-        paste(cor_strings, collapse = ", ")
-      )
+      paste0(module_name, " module correlated with ", trait_name)
     }
-    
-    
-    ggcors = rbind(
-      cors |> select(.data$variable_id, .data$activity, .data$module, all_of(paste0("cor_", labels))) |> mutate(weighted = "unweighted"),
-      cors |> select(.data$variable_id, .data$activity, .data$module, all_of(paste0("w_cor_", labels))) |> mutate(weighted = "weighted") |> rename_with(~ sub("^w_cor_", "cor_", .x), starts_with("w_cor_"))
-    ) |>
-      tidyr::pivot_longer(
-        cols = starts_with("cor_"),   # all columns that begin with "cor_"
-        names_to = "label",           # new column for names
-        values_to = "cor"             # new column for values
-      ) |>
-      mutate(label = gsub("cor_", "", .data$label))  # remove "cor_" prefix for cleaner labels
-    
-    # plots
-    if(type == "weighted"){
-      print(
-        ggplot(data = ggcors |> filter(.data$weighted == "weighted")) +
-          
-          # connective lines 
-          geom_segment(aes(x = .data$variable_id, y = cor, yend = 0, color = .data$label), na.rm = TRUE) +
-          geom_segment(
-            data = ggcors |> filter(.data$weighted == "weighted" & .data$activity == "active"),
-            mapping = aes(x = .data$variable_id, y = cor, yend = 0),
-            color = col_active,
-            na.rm = TRUE
-          ) +
-          
-          # all points coloured by activity
-          geom_point(aes(x = .data$variable_id, y = cor, color = .data$label), size = cex_point, na.rm = TRUE) +
-          
-          coord_flip() +
-          theme_classic(base_size = cex) +
-          scale_x_discrete(labels = top_n_labels, guide = guide_axis(n.dodge = y_dodge)) +
-          labs(x = xlab, y = ylab) +
-          ggtitle(classic_title) +
-          geom_hline(yintercept = 0, color = col_connective, linewidth = 1) +
-          guides(size = "none") +
-          scale_color_discrete(name = "Group")
-        
-      )
-    }
-    
-    if(type == "classic"){
-      print(
-        ggplot(data = ggcors |> filter(.data$weighted == "unweighted")) +
-          
-          # connective lines 
-          geom_segment(aes(x = .data$variable_id, y = .data$cor, yend = 0, color = .data$label), na.rm = TRUE, color = "grey") +
-          
-          # all points coloured by activity
-          geom_point(aes(x = .data$variable_id, y = .data$cor, color = .data$label), size = cex_point, na.rm = TRUE) +
-          
-          coord_flip() +
-          theme_classic(base_size = cex) +
-          scale_x_discrete(labels = top_n_labels, guide = guide_axis(n.dodge = y_dodge)) +
-          labs(x = xlab, y = ylab) +
-          ggtitle(classic_title) +
-          geom_hline(yintercept = 0, color = col_connective, linewidth = 1) +
-          guides(size = "none") +
-          scale_color_discrete(name = "Group")
-        
-      )
-    }
-    
+    title = paste0(title, "\nSPCA correlations: ", paste(correlations, collapse = ", "))
+
+    p = ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$variable_id, y = .data$value, color = .data$group)) +
+      ggplot2::geom_segment(ggplot2::aes(xend = .data$variable_id, yend = 0), na.rm = TRUE) +
+      ggplot2::geom_point(size = cex_point, na.rm = TRUE) +
+      ggplot2::coord_flip() +
+      ggplot2::geom_hline(yintercept = 0, color = 8, linewidth = 1) +
+      ggplot2::scale_color_manual(values = group_colors, name = "Group") +
+      ggplot2::scale_x_discrete(labels = label_map, guide = ggplot2::guide_axis(n.dodge = y_dodge)) +
+      ggplot2::theme_classic(base_size = cex) +
+      ggplot2::labs(x = xlab, y = if(type == "classic") "Correlations" else ylab, title = title)
+
     if(type == "both"){
-      print(
-        ggplot(data = ggcors) +
-          
-          # connective lines for weighted
-          geom_segment(
-            data = ggcors |> filter(.data$weighted == "weighted"),
-            mapping = aes(x = .data$variable_id, y = cor, yend = 0, color = .data$label), na.rm = TRUE) +
-          geom_segment(
-            data = ggcors |> filter(.data$weighted == "weighted" & .data$activity == "active"),
-            mapping = aes(x = .data$variable_id, y = cor, yend = 0),
-            color = col_active,
-            na.rm = TRUE
-          ) +
-          
-          # connective lines for classic
-          geom_segment(
-            data = ggcors |> filter(.data$weighted == "unweighted"),
-            mapping = aes(x = .data$variable_id, y = cor, yend = 0, color = .data$label), na.rm = TRUE, color = "grey") +
-          
-          # all points coloured by activity
-          geom_point(data = ggcors, mapping = aes(x = .data$variable_id, y = cor, color = .data$label), size = cex_point, na.rm = TRUE) +
-          
-          coord_flip() +
-          theme_classic(base_size = cex) +
-          scale_x_discrete(labels = top_n_labels, guide = guide_axis(n.dodge = y_dodge)) +
-          labs(x = xlab, y = ylab) +
-          ggtitle(classic_title) +
-          geom_hline(yintercept = 0, color = col_connective, linewidth = 1) +
-          guides(size = "none") +
-          scale_color_discrete(name = "Group") +
-          facet_wrap(~ .data$weighted, scales = "free")
-      )
+      p = p + ggplot2::facet_wrap(~ method, scales = "free")
     }
-    
+    plots[[paste(module_name, trait_name, sep = "__")]] = p
+    print(p)
   }
-  
+
+  invisible(plots)
 }

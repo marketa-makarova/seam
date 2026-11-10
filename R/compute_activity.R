@@ -1,221 +1,177 @@
 #' Compute activity statuses of variables using SPCA
+#' 
+#' The activity column describes the original SPCA fit. When bootstrap fits are
+#' available, pct_* columns give the percentage of bootstrap replicates assigned
+#' to each status. Percentages sum to 100 per variable (up to rounding).
 #'
-#' This function evaluates variable activity based on sparse principal component 
-#' analysis (SPCA) weights. It initially labels each variable's activity as 
-#' either **active** in the case it has been assigned none-zero weights or **dead** 
-#' in case it has been assigned weight equal to zero. 
-#' It optionally performs a correlation-based 
-#' refinement when the parameter \code{return_information = TRUE}, 
-#' to detect so called **undead** variables -- those that appear inactive 
-#' (**dead**) but are highly correlated with active ones.
-#'
-#' @param spca_data A list containing SPCA decomposition results from the 
-#' function \code{spca_all_modules} or \code{spca_all_modules_grid}.
-#' @param return_information Logical. If \code{FALSE}, returns only raw activity 
-#' assignments. If \code{TRUE} performs additional correlation-based checks to return
-#' dead variables highly correlated with actives one to **undead** activity status. 
-#' Defaults to \code{TRUE}.
-#' @param threshold Numeric. The correlation threshold used to determine 
-#' whether a **dead** variable highly correlated with an active variable, 
-#' suggesting it should be assigned the status **undead**. 
-#' Default value is 0.8.
-#' @param labels Character vector. Provides group labels. 
-#' These labels are used for activity assignment.
-#'
-#' @return A data frame with the following columns:
-#' \describe{
-#'   \item{variable_id}{Variable identifiers/names.}
-#'   \item{module}{The assigned module/cluster if applicable.}
-#'   \item{weight columns}{SPCA weight of the variable. If several groups are present, 
-#'   there will be several of these column with the suffix \code{_label}.}
-#'   \item{activity}{Activity status.}
-#' }
+#' @param spca_data Result of spca_all_modules() or spca_all_modules_grid().
+#' @param return_information `TRUE` for refined undead classifications,
+#'   `FALSE` for raw selection, or `"both"` to print both plots.
+#' @param threshold Absolute within-group correlation threshold for reclassification to undead status.
+#' @param labels Group labels, if present, in the same order as the expression data.
+#' 
+#' @return Data frame with variable_id, module, `w_<label>` columns, activity,
+#'   and optional `pct_<status>` bootstrap percentages.
 #'
 #' @details
-#' In case of no groups, activity labels are assigned as follows:
-#' \itemize{
-#'   \item **active** — variables assigned non-zero weights by SPCA.
-#'   \item **dead** — variables assigned zero weights by SPCA.
-#' }
+#' A variable is active in a group when its SPCA loading is nonzero. A variable
+#' excluded in all groups is classified as undead in a given group only when it
+#' has absolute correlation above `threshold` with at least one variable
+#' selected by SPCA in that same group. Variables selected in other groups
+#' do not contribute to this classification. 
 #' 
-#' In case of two groups, labelled \code{c("A", "B")}, activity labels are assigned as follows:
-#' \itemize{
-#'   \item **both_dead** — variables assigned zero weights by SPCA performed on the expression data of *both* groups.
-#'   \item **both_active** — variables assigned non-zero weights by SPCA in *both* groups.
-#'   \item **active_A** — variables assigned non-zero weights only in group \code{"A"} and zero weights in group \code{"B"}.
-#'   \item **active_B** — variables assigned non-zero weights only in group \code{"B"} and zero weights in group \code{"A"}.
-#' }
+#' Bootstrap resampling is used to assess the stability of variable selection
+#' under repeated sampling. Selection frequencies describe the reproducibility 
+#' of nonzero SPCA loadings and should not be interpreted as 
+#' statistical significance or evidence of differential population support.
 #'
-#' If \code{return_information == TRUE}, the function additionally checks whether any
-#' **both_dead** variables are highly correlated (Pearson's \eqn{r > threshold})
-#' with variables that are active in at least one group.
-#' Such variables are relabeled as follows:
-#' \itemize{
-#'   \item **undead_A** — correlated with active variables in group \code{"A"} only.
-#'   \item **undead_B** — correlated with active variables in group \code{"B"} only.
-#'   \item **both_undead** — correlated with active variables in *both* groups.
-#' }
+#' With the presence of groups, activity labels are `dead`, `active`, `active_<label>`,
+#' `undead`, and `undead_<label>`. The labels `active` and `undead` indicate
+#' all groups. Bootstrap percentages use the selected variables from each
+#' corresponding group and bootstrap replicate, with within-group correlations
+#' calculated from the original expression matrices.
 #' 
-#' For more than two groups, the function applies analogous logic. Specifically:
-#' \itemize{
-#'   \item **active** — varaibles assigned non-zero weights by SPCA
-#'   in *at least two* groups.
-#'   \item **dead** — varibales assigned zero weights by SPCA
-#'   in *all* groups.
-#'   \item If a variable is active **only in one group**, it is labeled accordingly
-#'   (e.g., \code{active_A}, \code{active_B}, \code{active_C}).
-#'   \item If \code{return_information == TRUE}, dead variables may be relabeled as
-#'   **undead** variants based on high correlation with active variables in one or more groups,
-#'   following the same principles as in the two-group case.
-#' }
+#' @examples
+#' data("seam_demo", package = "seam")
+#' fit = spca_all_modules(
+#'  seam_demo$expression_data,
+#'  seam_demo$module_assignment,
+#'  lambda = 0.05, 
+#'  bootstrap = FALSE
+#' )
+#' activity = compute_activity(
+#'  fit, 
+#'  labels = seam_demo$labels
+#' )
+#' table(
+#'  activity$module, 
+#'  activity$activity
+#' )
 #'
 #' @export
 
-compute_activity = function(
-    spca_data, 
-    return_information = TRUE, 
-    threshold = 0.8,
-    labels){
-  
-  if(!is.numeric(threshold)){
-    stop("Invalid threshold argument value.")
-  }
-  
+compute_activity = function(spca_data, return_information = TRUE, threshold = 0.8, labels){
+
   if(!is.list(spca_data)){
-    stop("Invalid spca_data argument, must be a list.")
+    stop("spca_data must be a list.")
+  } 
+  if(threshold <= 0 || threshold >= 1 || !is.numeric(threshold) || length(threshold) != 1 || is.na(threshold)){
+    stop("threshold argument value must be a number between 0 and 1.")
   }
-  
-  if(threshold <= 0 | threshold >= 1){
-    warning("Threshold argument value should be between 0 and 1.")
-  }
-  
-  if(length(labels) != length(spca_data$PCs)){
-    stop("Length of labels does not coincide with number of groups in spca_data.")
-  }
-  
-  if(any(grepl("-", labels))){
-    stop("Do not use - in labels.")
+  nsets = length(spca_data$vs)
+  if(length(labels) != nsets || anyDuplicated(labels) || any(grepl("-", labels))){
+    stop("Provide unique labels, one per group, without '-'.")
   }
 
-  # extract information
-  nsets = length(spca_data$vs)
-  number_of_modules = length(spca_data$module_matrices[[1]])
-  
-  # initialize activity table
-  activity_table = data.frame(
-    variable_id = unlist(lapply(spca_data$module_matrices[[1]], colnames)),
-    module = rep(names(spca_data$module_matrices[[1]]), lapply(spca_data$module_matrices[[1]], ncol))
-  )
-  
-  # save weights into activity table and name the columns appropriately
-  for(set in 1:nsets){
-    activity_table = cbind(activity_table, unlist(spca_data$vs[[set]]))
+  # prepare necessary variables
+  modules = spca_data$module_colors
+  boot = spca_data$bootstrap
+  results = vector("list", length(modules))
+  statuses = if(nsets == 1){
+    c("dead", "active", if(isTRUE(return_information) || return_information == "both") "undead")
+  } else {
+    c("dead", "active", paste0("active_", labels),
+      if(isTRUE(return_information) || return_information == "both") c("undead", paste0("undead_", labels)))
   }
-  names(activity_table)[(ncol(activity_table) - nsets + 1):ncol(activity_table)] = paste("w", labels, sep = "_")
-  
-  # compute activity status
-  activity_table = activity_table |>
-    mutate(
-      weights = rowSums(across(starts_with("w_")) != 0)) |> # number of non-zero weights
-    mutate(
-      activity = case_when(
-        .data$weights == 0 ~ "dead",
-        .data$weights > 1 ~ "active",
-        .data$weights == 1 ~ paste0( # specific only for one group
-          "active_",
-          sub("^w_", "", labels[max.col(across(starts_with("w_")) != 0, ties.method = "first")]) # which group
-        )
-      )
-    ) |>
-    select(-"weights") # remove the column used for computations
-  
-  
-  if(return_information == FALSE){ return(activity_table) }
-  
-  if(return_information == TRUE | return_information == "both"){
-    
-    # initialize the new undead group specific columns so they can be updated when iterating through modules
-    for(set in 1:nsets){
-      new_column_name = paste0("undead_", labels[set])
-      activity_table[[new_column_name]] = activity_table$activity
-    }
-    
-    for(module in 1:number_of_modules){
-      for(set in 1:nsets){ 
-        
-        module_cor = abs(cor(spca_data$module_matrices[[set]][[module]]))
-        diag(module_cor) = 0
-        
-        # find which variables have high correlations with other variables (> threshold) 
-        module_cor_threshold = module_cor |> 
-          data.frame() |> 
-          select(where(~ any(. > threshold))) |> 
-          filter(if_any(everything(), ~ . > threshold)) 
-        
-        # if nothing passes threshold, move on
-        if(length(names(module_cor_threshold)) == 0){
-          next
-        } else { # there are some undead, so lets identify them
-          variable_activity_table_threshold = activity_table |> 
-            filter(.data$variable_id %in% rownames(module_cor_threshold)) 
-          
-          # check which ones are classified as dead
-          dead = variable_activity_table_threshold |> 
-            filter(.data$activity == "dead") |> 
-            pull(.data$variable_id)
-          
-          if(length(dead) == 0){
-            next
-          }
-          
-          # check which ones of these are correlated with some active variable (highly correlated but both dead are of no interest)
-          full_rowsums = (module_cor_threshold > threshold) |> rowSums() 
-          full_rowsums = data.frame(variable_id = names(full_rowsums), rowsums = full_rowsums)
-          rowsums = (module_cor_threshold |> 
-                       filter(names(module_cor_threshold) %in% dead) |> 
-                       select(all_of(dead)) > threshold) |> 
-            rowSums() # same as colSums due to symmetry
-          both_dead_rowsums = data.frame(variable_id = names(rowsums), both_dead_rowsums = rowsums)
-          
-          # dont delete this additional skip, it breaks without it
-          if(nrow(both_dead_rowsums) == 0){ 
-            next
-          }
-          
-          undead_ids = both_dead_rowsums |> 
-            left_join(by = join_by('variable_id'), full_rowsums) |> 
-            filter(both_dead_rowsums != rowsums) |> 
-            pull(.data$variable_id)
-          
-          undead_label = paste("undead", labels[set], sep = "_")
-          
-          # modify the activity of those returning from the dead for interpretation to "undead"
-          activity_table[activity_table$variable_id %in% undead_ids, paste0("undead_", labels[set])] = undead_label  
-        }
+
+  # prepare classification function
+  classify = function(selected, adjacency){
+    n_active = rowSums(selected)
+    activity = rep("dead", nrow(selected))
+    activity[n_active > 1] = "active"
+    if(nsets == 1){
+      activity[n_active == 1] = "active"
+    } else {
+      single = which(n_active == 1)
+      if(length(single)){
+        activity[single] = paste0("active_", labels[max.col(selected[single, , drop = FALSE])])
       }
     }
-    
-    undead_cols <- names(activity_table)[grepl("^undead_", names(activity_table))]
-    
-    activity_table <- activity_table |>
-      mutate(
-        undead_counts = rowSums(as.data.frame(across(all_of(undead_cols), ~ grepl("undead", .x))))) |>
-      mutate(
-        undead_label  = case_when(
-          .data$undead_counts == 1 ~ sub("^undead_", "", undead_cols[
-            max.col(across(all_of(undead_cols), ~ grepl("undead", .x)), ties.method = "first")
-          ]),
-          TRUE ~ NA_character_
-        )) |>
-      mutate(activity = case_when(
-        .data$undead_counts == 0 ~ activity,                        # keep original activity if nothing is undead
-        .data$undead_counts > 1 ~ "undead",                         # undead status for undead in multiple groups
-        .data$undead_counts == 1 ~ paste0("undead_", undead_label)  # one undead → give specific label
-      )
-      ) |>
-      select(- all_of(undead_cols)) |>
-      select(- c("undead_counts", "undead_label"))
-    
-    return(activity_table)
+
+    if((isTRUE(return_information) || return_information == "both") && any(n_active == 0)){
+      dead = which(n_active == 0)
+      undead = matrix(FALSE, nrow(selected), nsets)
+      for(set in seq_len(nsets)){
+        # only variables selected in this same group can restore information
+        undead[, set] = as.vector(adjacency[[set]] %*% as.integer(selected[, set])) > 0
+      }
+      undead[!seq_len(nrow(selected)) %in% dead, ] = FALSE
+      n_undead = rowSums(undead)
+      if(nsets == 1){
+        activity[dead[n_undead[dead] > 0]] = "undead"
+      } else {
+        activity[dead[n_undead[dead] > 1]] = "undead"
+        single_undead = dead[n_undead[dead] == 1]
+        if(length(single_undead)){
+          activity[single_undead] = paste0(
+            "undead_", labels[max.col(undead[single_undead, , drop = FALSE])]
+          )
+        }
+      }
+    } 
+    return(activity)
   }
+
+  # classify activity
+  for(module in seq_along(modules)){
+    variable_ids = colnames(spca_data$module_matrices[[1]][[module]])
+    if(is.null(variable_ids)){
+      variable_ids = as.character(seq_len(ncol(spca_data$module_matrices[[1]][[module]])))
+    }
+    p = length(variable_ids)
+    weights = matrix(NA_real_, p, nsets, dimnames = list(variable_ids, labels))
+    adjacency = vector("list", nsets)
+
+    for(set in seq_len(nsets)){
+      x = spca_data$module_matrices[[set]][[module]]
+      w = spca_data$vs[[set]][[module]]
+      if(!is.null(names(w))){
+        w = w[variable_ids]
+      } else if(!identical(colnames(x), variable_ids)){
+        stop("Module variable order differs across groups.")
+      }
+      weights[, set] = w
+      if(isTRUE(return_information) || return_information == "both"){
+        x = as.matrix(x[, variable_ids, drop = FALSE])
+        r = suppressWarnings(abs(stats::cor(x)))
+        adjacency[[set]] = r > threshold & is.finite(r)
+        diag(adjacency[[set]]) = FALSE
+      }
+    }
+
+    out = data.frame(variable_id = variable_ids,
+                     module = rep(modules[module], p),
+                     stringsAsFactors = FALSE)
+    for(set in seq_len(nsets)) out[[paste0("w_", labels[set])]] = weights[, set]
+    out$activity = classify(weights != 0, adjacency)
+
+    if(!is.null(boot) && !is.null(boot$vs)){
+      bootstrap_n = nrow(boot$vs[[1]][[module]])
+      counts = matrix(0L, p, length(statuses), dimnames = list(NULL, statuses))
+      for(b in seq_len(bootstrap_n)){
+        selected = matrix(FALSE, p, nsets)
+        for(set in seq_len(nsets)){
+          boot_weights = boot$vs[[set]][[module]]
+          if(!is.null(colnames(boot_weights))){
+            selected[, set] = boot_weights[b, variable_ids] != 0
+          } else {
+            selected[, set] = boot_weights[b, ] != 0
+          }
+        }
+        current = classify(selected, adjacency)
+        for(k in seq_along(statuses)){
+          counts[, k] = counts[, k] + as.integer(current == statuses[k])
+        }
+      }
+      for(k in seq_along(statuses)){
+        out[[paste0("pct_", statuses[k])]] = 100 * counts[, k] / bootstrap_n
+      }
+    }
+    results[[module]] = out
+  }
+
+  activity_table = do.call(rbind, results)
+  rownames(activity_table) = NULL
+  return(activity_table)
+
 }

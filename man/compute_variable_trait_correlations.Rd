@@ -2,7 +2,7 @@
 % Please edit documentation in R/compute_variable_trait_correlations.R
 \name{compute_variable_trait_correlations}
 \alias{compute_variable_trait_correlations}
-\title{Compute correlations between clinical traits and variables}
+\title{Compute variable–trait correlations}
 \usage{
 compute_variable_trait_correlations(
   trait_data,
@@ -13,45 +13,40 @@ compute_variable_trait_correlations(
 )
 }
 \arguments{
-\item{trait_data}{A list containing trait data.frame(s) with
-clinical variables in columns and samples in rows. Rows must be named
-in correspondence to sample names in expression data.
-Length of the list corresponds to the number of groups.}
+\item{trait_data}{List of numeric trait data frames, one per group, with rows
+in the same order as the corresponding expression matrix.}
 
-\item{spca_data}{A list containing SPCA decomposition results from the
-function \code{spca_all_modules} or \code{spca_all_modules_grid}.}
+\item{spca_data}{Result of spca_all_modules() or spca_all_modules_grid().}
 
-\item{return_information}{Logical. If \code{FALSE}, returns only raw activity
-assignments. If \code{TRUE} performs additional correlation-based checks to return
-dead variables highly correlated with actives one to \strong{undead} activity status.
-Defaults to \code{TRUE}.}
+\item{return_information}{\code{TRUE} for refined undead classifications,
+\code{FALSE} for raw selection, or \code{"both"} to print both plots.}
 
-\item{threshold}{Numeric. The correlation threshold used to determine
-whether a \strong{dead} variable highly correlated with an active variable,
-suggesting it should be assigned the status \strong{undead}.
-Default value is 0.8.}
+\item{threshold}{Absolute within-group correlation threshold for reclassification to undead status.}
 
-\item{labels}{Character vector. Provides group labels.
-These labels are used for activity assignment.}
+\item{labels}{Group labels, if present, in the same order as the expression data.}
 }
 \value{
-A list with of data frames with the following columns:
-\describe{
-\item{variable_id}{Variable identifiers/names.}
-\item{module}{The assigned module/cluster if applicable.}
-\item{activity}{Activity status.}
-\item{cor}{Correlation with a given clinical trait.}
-\item{w_cor}{Weighted correlation with a given clinical trait.}
-}
+List of data frames, one per group. Each contains variable_id,
+module, original SPCA weights, activity, and \verb{<trait>_cor} and \verb{<trait>_w_cor} columns.
 }
 \description{
-This function computes Pearson correlations between variables and
-external clinical trait data. It also computes weighted correlations based
-on SPCA assigned weights.
+Computes Pearson correlations between expression variables and clinical traits,
+alogside SPCA-weighted correlations (correlation multiplied by corresponding SPCA weight).
+When bootstrap fits are available, adds bootstrap confidence intervals using
+combined resampling of traits and samples.
 }
-\details{
-Both weighted and non-weighted Pearson's correlations between variables and
-traits are computed. Weights are taken as loadings from SPCA implemented by
-the \code{\link[elasticnet]{spca}}. install_github("kbroman/broman")For details on activity assignment, refer
-to \code{\link{compute_activity}}.
+\examples{
+data("seam_demo", package = "seam")
+fit = spca_all_modules(
+ seam_demo$expression_data,
+ seam_demo$module_assignment,
+ lambda = 0.05, 
+ bootstrap = FALSE
+)
+vtc = compute_variable_trait_correlations(
+ seam_demo$trait_data, 
+ fit, 
+ labels = seam_demo$labels)
+head(vtc[[1]])
+
 }

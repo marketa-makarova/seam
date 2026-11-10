@@ -2,48 +2,52 @@
 % Please edit documentation in R/spca_all_modules_grid.R
 \name{spca_all_modules_grid}
 \alias{spca_all_modules_grid}
-\title{Perform SPCA across all groups and modules with different sparsity}
+\title{Perform SPCA across groups and modules with module-specific sparsity}
 \usage{
 spca_all_modules_grid(
   expression_data,
   module_assignment,
   modules = "all",
-  lambdas
+  lambdas,
+  bootstrap = TRUE,
+  n = 100
 )
 }
 \arguments{
-\item{expression_data}{A list containing expression matrices for each group.}
+\item{expression_data}{List of numeric expression matrices (samples in rows).}
 
-\item{module_assignment}{Character vector. Assigns
-module/cluster to each variable by color. If no clustering is present, this
-argument may be set to \code{NA}.}
+\item{module_assignment}{Vector of modules assigned to variables. One module per variable.}
 
-\item{modules}{Character or character vector. Allows for module selection. Defaults to \code{"all"}.}
+\item{modules}{Module labels to plot, or \code{"all"} (default).}
 
-\item{lambdas}{A numeric vector of lambda values specifying the value for each module/cluster. Sparsity penalty parameter passed to \code{\link[elasticnet]{spca}}.}
+\item{lambdas}{Non-negative sparsity penalties passed to the \code{para} argument of \code{\link[elasticnet:spca]{elasticnet::spca()}}.
+For no module assignment, supply a single value.}
+
+\item{bootstrap}{Logical. Whether to compute bootstrap replicates.}
+
+\item{n}{Number of bootstrap replicates.}
 }
 \value{
-A list with the following elements:
-\describe{
-\item{\code{PCs}}{List of matrices. Each matrix contains the first SPCA component (PC1) for each module, per dataset.}
-\item{\code{var_exp}}{List of matrices. Each matrix holds the variance explained by PC1 in each module.}
-\item{\code{vs}}{List of lists. Each inner list contains loading vectors (weights) for PC1 in each module.}
-\item{\code{module_assignment}}{Original vector of module assignments.}
-\item{\code{module_matrices}}{List of lists. Each sublist contains the expression matrix for each module and group.}
-\item{\code{module_colors}}{Module color order used.}
-\item{\code{module_sizes}}{List of vectors of module sizes (number of variables per module).}
-\item{\code{module_signs}}{List of vectors of sign changes for eigengenes.}
-}
+List with original PCs, var_exp, vs, module_matrices,
+module_colors, module_sizes, module_assignment, module_signs, and
+optional bootstrap list (PCs, var_exp, vs, module_signs, samples).
 }
 \description{
-Applies sparse PCA to each module in each dataset,
-storing weights, explained variance, and the first principal component.
+Fits SPCA to the original data and optionally to bootstrap resamples.
+Input expression matrices must contain no missing values.
+Allows for different sparsity penalties across modules.
 }
 \details{
-Each module is extracted based on \code{module_assignment}.
-If missing values are present, they are imputed using KNN imputation from \pkg{impute}.
+Bootstrap resampling may be used to assess the stability of
+variable selection under repeated sampling.
+}
+\examples{
+data("seam_demo", package = "seam")
+fit = spca_all_modules_grid(
+ seam_demo$expression_data,
+ seam_demo$module_assignment,
+ lambdas = c(blue = 0.05, red = 0.08),
+ bootstrap = FALSE
+)
 
-The SPCA is performed using the \code{\link[elasticnet]{spca}}
-function from the \pkg{elasticnet} package, with a single component (PC1) extracted per module.
-The sign of each PC is adjusted to match the average expression direction for interpretability.
 }

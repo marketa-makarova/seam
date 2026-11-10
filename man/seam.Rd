@@ -2,10 +2,10 @@
 % Please edit documentation in R/seam-package.R
 \name{seam}
 \alias{seam}
-\title{seam: Package for extended WGCNA analysis via sparse eigengene}
+\title{seam: Sparse Eigengene Analysis of Modules}
 \description{
-This package provides functions to perform extended analyses using
-WGCNA (Weighted Gene Co-expression Network Analysis) with sparse eigengene
-methods. It includes various tools for data visualization, module analysis,
-and other network analysis utilities.
+Tools for extended analysis of weighted gene co-expression networks
+using sparse principal component analysis. Includes
+functions for group comparison, visualizing of drivers,
+and clinical trait correlation analysis.
 }

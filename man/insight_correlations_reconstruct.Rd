@@ -2,13 +2,13 @@
 % Please edit documentation in R/insight_correlations_reconstruct.R
 \name{insight_correlations_reconstruct}
 \alias{insight_correlations_reconstruct}
-\title{Reconstruct correlations with clinical traits using top contributing variables}
+\title{Reconstruct module-trait correlations from top contributing variables}
 \usage{
 insight_correlations_reconstruct(
   module_trait_correlations,
   spca_data,
   labels,
-  col,
+  col = NULL,
   cex = 20,
   top_n_upper = 50,
   top_n_lower = 10,
@@ -16,78 +16,67 @@ insight_correlations_reconstruct(
   threshold = 0.8,
   return_information = TRUE,
   ylab = "Correlation",
-  xlab = "Top n variables",
-  col_connective = 8
+  xlab = "Top n variables"
 )
 }
 \arguments{
-\item{module_trait_correlations}{A list of module trait correlations
-computed using the \code{compute_module_trait_correlations} function.}
+\item{module_trait_correlations}{Result of compute_module_trait_correlations()
+calculated with mode = "spca" or "both".}
 
-\item{spca_data}{A list containing SPCA decomposition results from the
-function \code{spca_all_modules} or \code{spca_all_modules_grid}.}
+\item{spca_data}{Result of spca_all_modules() or spca_all_modules_grid().}
 
-\item{labels}{Character vector. Provides group labels.
-These labels are used for activity assignment.}
+\item{labels}{Group labels, if present, in the same order as the expression data.}
 
-\item{col}{Color or vector of colors if groups are present.
-Used for plotting points.}
+\item{col}{Optional colors for the groups.}
 
-\item{cex}{Numeric. Font size for plot elements.
-Passed to \code{theme_classic()} argument.
-Defaults to 20.}
+\item{cex}{Base text size.}
 
-\item{top_n_upper}{Integer.
-Maximum number of variables to include in the reconstruction.
-Defaults to 50.}
+\item{top_n_upper}{Maximum number of selected variables.}
 
-\item{top_n_lower}{Integer.
-Minimum number of variables to include.
-Defaults to 10.}
+\item{top_n_lower}{Minimum number of selected variables.}
 
-\item{interest_threshold}{Numeric. Only module–trait correlations greater
-than this value (in absolute terms) are considered interesting and plotted.
-Default is 0.6.}
+\item{interest_threshold}{Miminal absolute module-trait correlation threshold.}
 
-\item{threshold}{Numeric. The correlation threshold used to determine
-whether a \strong{dead} variable highly correlated with an active variable,
-suggesting it should be assigned the status \strong{undead}.
-Default value is 0.8.}
+\item{threshold}{Absolute within-group correlation threshold for reclassification to undead status.}
 
-\item{return_information}{Logical. If \code{FALSE}, returns only raw activity
-assignments. If \code{TRUE} performs additional correlation-based checks to
-detect \strong{undead} variables and updates the activity status accordingly.
-Defaults to \code{TRUE}.}
+\item{return_information}{\code{TRUE} for refined undead classifications,
+\code{FALSE} for raw selection, or \code{"both"} to print both plots.}
 
-\item{ylab}{Character. Y-axis label.}
-
-\item{xlab}{Character. X-axis label.}
-
-\item{col_connective}{Color of a horizontal line at 0.
-Defaults to 8 (grey).}
+\item{ylab, xlab}{Axis labels.}
 }
 \value{
-One or more ggplot2 plots are printed to the active graphics device.
-If no correlations exceed the interest_threshold, a message is returned instead.
+A named list of ggplot objects is returned invisibly. Plots are printed separately.
 }
 \description{
-This function visualizes how well module–trait correlations can be
-reconstructed using only the top \code{n} variables
-with the highest absolute values of SPCA weights. It generates line plots showing
-how correlation strength evolves as more top variables
-are included in the reconstruction. If modules/clusters are present,
-each module will have its own plot created.
+Ranks variables within each group by the absolute product of their
+SPCA weight and variable-trait correlation. Reconstructs the
+SPCA score from the top variables and compares its trait correlation
+with the original full-module correlation. Optional bootstrap fits do
+not change the reconstruction; only original estimates are used.
 }
-\details{
-For each correlation above the threshold:
-\itemize{
-\item The top contributing variables (based on absolute weighted SPCA correlation) are identified.
-\item The correlation is re-calculated for using a subset of these \code{n}
-top contributing variables. It ranges from \code{top_n_lower} to \code{top_n_upper}.
-\item A line plot shows the reconstruction performance across \code{n},
-compared to the original module–trait correlation.
+\examples{
+\donttest{
+data("seam_demo", package = "seam")
+fit = spca_all_modules(
+ seam_demo$expression_data,
+ seam_demo$module_assignment,
+ lambda = 0.05, 
+ bootstrap = FALSE
+)
+mtc = compute_module_trait_correlations(
+ seam_demo$trait_data, 
+ fit, 
+ seam_demo$module_assignment,
+ mode = "both"
+)
+insight_correlations_reconstruct(
+ mtc, 
+ fit,
+ labels = seam_demo$labels,
+ top_n_lower = 1, 
+ top_n_upper = 8,
+ interest_threshold = 0.2
+)
 }
 
-This helps assess how few key variables are needed to approximate the full
-module-trait correlation.
 }

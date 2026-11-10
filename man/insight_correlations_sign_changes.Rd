@@ -2,13 +2,13 @@
 % Please edit documentation in R/insight_correlations_sign_changes.R
 \name{insight_correlations_sign_changes}
 \alias{insight_correlations_sign_changes}
-\title{Visualize sign changes in variable-trait correlations due to SPCA weights}
+\title{Visualize variable-trait correlations and negative SPCA weights}
 \usage{
 insight_correlations_sign_changes(
   module_trait_correlations,
   spca_data,
   labels,
-  col,
+  col = NULL,
   interest_threshold = 0.6,
   cex = 20,
   xlab = "Correlations",
@@ -16,40 +16,51 @@ insight_correlations_sign_changes(
 )
 }
 \arguments{
-\item{module_trait_correlations}{A list of module trait correlations
-computed using the \code{compute_module_trait_correlations} function.}
+\item{module_trait_correlations}{Result of compute_module_trait_correlations()
+with mode = "spca" or "both".}
 
-\item{spca_data}{A list containing SPCA decomposition results from the
-function \code{spca_all_modules} or \code{spca_all_modules_grid}.}
+\item{spca_data}{Result of spca_all_modules() or spca_all_modules_grid().}
 
-\item{labels}{Character vector. Provides group labels.
-These labels are used for activity assignment.}
+\item{labels}{Group labels, if present, in the same order as the expression data.}
 
-\item{col}{Color or vector of colors if groups are present.
-Used for plotting points.}
+\item{col}{Optional colors for the groups.}
 
-\item{interest_threshold}{Numeric. Only module–trait correlations greater
-than this value (in absolute terms) are considered interesting and plotted.
-Default is 0.6.}
+\item{interest_threshold}{Miminal absolute module-trait correlation threshold.}
 
-\item{cex}{Numeric. Font size for plot elements.
-Passed to \code{theme_classic()} argument.
-Defaults to 20.}
+\item{cex}{Base text size.}
 
-\item{xlab}{Character. X-axis label.}
-
-\item{ylab}{Character. Y-axis label.}
+\item{xlab, ylab}{Axis labels.}
 }
 \value{
-One or more ggplot2 plots are printed to the active graphics device.
-If no correlations exceed the interest_threshold, a message is returned instead.
+A named list of ggplot objects is returned invisibly. Plots are printed separately.
 }
 \description{
-This function explores how weights between variables differ in signs between
-classic eigengenes and SPCA-derived eigengenes.
-It visualizes the distribution
-of raw and weighted correlations and
-reports the proportion of variables whose weighted correlation signs
-have changed due to sign change in weights. If modules/clusters are present,
-each module will have its own plot created.
+Selects module-trait pairs exceeding the absolute SPCA correlation
+threshold in at least one group. For each pair, plots the density of
+unweighted variable-trait correlations among variables active in SPCA.
+The title reports the percentage of active variables with negative
+SPCA weights in each group.
+}
+\examples{
+\donttest{
+data("seam_demo", package = "seam")
+fit = spca_all_modules(
+ seam_demo$expression_data,
+ seam_demo$module_assignment,
+ lambda = 0.05,
+ bootstrap = FALSE
+)
+mtc = compute_module_trait_correlations(
+ seam_demo$trait_data, 
+ fit, 
+ seam_demo$module_assignment,
+ mode = "both")
+insight_correlations_sign_changes(
+ mtc, 
+ fit,
+ labels = seam_demo$labels,
+ interest_threshold = 0.2
+)
+}
+
 }

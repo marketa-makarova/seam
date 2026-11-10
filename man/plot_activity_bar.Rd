@@ -2,7 +2,7 @@
 % Please edit documentation in R/plot_activity_bar.R
 \name{plot_activity_bar}
 \alias{plot_activity_bar}
-\title{Plot variable activity statuses as a stacked bar chart}
+\title{Plot variable activity statuses as a stacked barplot}
 \usage{
 plot_activity_bar(
   spca_data,
@@ -11,72 +11,61 @@ plot_activity_bar(
   threshold = 0.6,
   labels,
   cex = 20,
-  col_both_active = 3,
-  col_active,
-  col_dead = 8,
+  col_both_active = "forestgreen",
+  col_active = NULL,
+  col_dead = "grey55",
   col_both_undead = "lightgrey",
-  col_undead,
+  col_undead = NULL,
   xlab = "Module",
   ylab = "Count"
 )
 }
 \arguments{
-\item{spca_data}{A list containing SPCA decomposition results from the
-function \code{spca_all_modules} or \code{spca_all_modules_grid}.}
+\item{spca_data}{Result of spca_all_modules() or spca_all_modules_grid().}
 
-\item{return_information}{Logical. If \code{FALSE}, returns only raw activity
-assignments. If \code{TRUE} performs additional correlation-based checks to
-detect \strong{undead} variables and updates the activity status accordingly.
-Defaults to \code{TRUE}.}
+\item{return_information}{\code{TRUE} for refined undead classifications,
+\code{FALSE} for raw selection, or \code{"both"} to print both plots.}
 
-\item{modules}{Character or character vector. Allows for module selection. Defaults to \code{"all"}.}
+\item{modules}{Module labels to plot, or \code{"all"} (default).}
 
-\item{threshold}{Numeric. The correlation threshold used to determine
-whether a \strong{dead} variable highly correlated with an active variable,
-suggesting it should be assigned the status \strong{undead}.
-Default value is 0.8.}
+\item{threshold}{Absolute within-group correlation threshold for reclassification to undead status.}
 
-\item{labels}{Character vector. Provides group labels.
-These labels are used for activity assignment.}
+\item{labels}{Group labels, if present, in the same order as the expression data.}
 
-\item{cex}{Numeric. Font size for plot elements.
-Passed to \code{theme_classic()} argument.
-Defaults to 20.}
+\item{cex}{Base text size.}
 
-\item{col_both_active}{Color for variables that are active in both groups.
-Default is 3 (green).}
+\item{col_both_active}{Color for variables selected in all groups.}
 
-\item{col_active}{Color or vector of colors if groups are present.
-Used for plotting points of \strong{active} variables.}
+\item{col_active}{Colors for variables selected in exactly one group;
+one color per group, in \code{labels} order.}
 
-\item{col_dead}{Color for \strong{dead} variables.
-Defaults to 8 (grey).}
+\item{col_dead}{Color for variables excluded in every group.}
 
-\item{col_both_undead}{Color for \strong{undead} variables.
-Default is \code{"lightgrey"}.}
+\item{col_both_undead}{Color for variables undead in all groups.}
 
-\item{col_undead}{Color or vector of colors if groups are present.
-Used for plotting points of \strong{undead} variables.}
+\item{col_undead}{Colors for variables undead in exactly one group;
+one color per group, in \code{labels} order.}
 
-\item{xlab}{Character. X-axis label.}
-
-\item{ylab}{Character. Y-axis label.}
+\item{xlab, ylab}{Axis labels.}
 }
 \value{
-A (\code{ggplot}) showing the activity distribution per module.
+A named list of ggplot objects is returned invisibly. Multiple plots are printed separately.
 }
 \description{
-This function visualizes the distribution of variable activity statuses
-using stacked bar charts.
-Activity statuses include three main states \strong{active}, \strong{dead}, and \strong{undead}.
-Function is able to incorporate both groups and modules.
+Displays counts of original SPCA activity classifications across modules
+as a stacked barplot. Statuses are differentiated by colour.
 }
-\details{
-The function determines activity states based on whether the SPCA weights
-for a variables are zero or non-zero.
-Variables labeled \strong{both_dead} but showing strong intra-module correlations
-with active variables are reclassified as \strong{undead}
-for interpretability if option \code{return_information = TRUE}.
+\examples{
+data("seam_demo", package = "seam")
+fit = spca_all_modules(
+ seam_demo$expression_data,
+ seam_demo$module_assignment,
+ lambda = 0.05, 
+ bootstrap = FALSE
+)
+plot_activity_bar(
+ fit, 
+ labels = seam_demo$labels
+)
 
-For details about activity statuses refer to \code{\link{compute_activity}}.
 }

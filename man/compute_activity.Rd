@@ -7,77 +7,57 @@
 compute_activity(spca_data, return_information = TRUE, threshold = 0.8, labels)
 }
 \arguments{
-\item{spca_data}{A list containing SPCA decomposition results from the
-function \code{spca_all_modules} or \code{spca_all_modules_grid}.}
+\item{spca_data}{Result of spca_all_modules() or spca_all_modules_grid().}
 
-\item{return_information}{Logical. If \code{FALSE}, returns only raw activity
-assignments. If \code{TRUE} performs additional correlation-based checks to return
-dead variables highly correlated with actives one to \strong{undead} activity status.
-Defaults to \code{TRUE}.}
+\item{return_information}{\code{TRUE} for refined undead classifications,
+\code{FALSE} for raw selection, or \code{"both"} to print both plots.}
 
-\item{threshold}{Numeric. The correlation threshold used to determine
-whether a \strong{dead} variable highly correlated with an active variable,
-suggesting it should be assigned the status \strong{undead}.
-Default value is 0.8.}
+\item{threshold}{Absolute within-group correlation threshold for reclassification to undead status.}
 
-\item{labels}{Character vector. Provides group labels.
-These labels are used for activity assignment.}
+\item{labels}{Group labels, if present, in the same order as the expression data.}
 }
 \value{
-A data frame with the following columns:
-\describe{
-\item{variable_id}{Variable identifiers/names.}
-\item{module}{The assigned module/cluster if applicable.}
-\item{weight columns}{SPCA weight of the variable. If several groups are present,
-there will be several of these column with the suffix \code{_label}.}
-\item{activity}{Activity status.}
-}
+Data frame with variable_id, module, \verb{w_<label>} columns, activity,
+and optional \verb{pct_<status>} bootstrap percentages.
 }
 \description{
-This function evaluates variable activity based on sparse principal component
-analysis (SPCA) weights. It initially labels each variable's activity as
-either \strong{active} in the case it has been assigned none-zero weights or \strong{dead}
-in case it has been assigned weight equal to zero.
-It optionally performs a correlation-based
-refinement when the parameter \code{return_information = TRUE},
-to detect so called \strong{undead} variables -- those that appear inactive
-(\strong{dead}) but are highly correlated with active ones.
+The activity column describes the original SPCA fit. When bootstrap fits are
+available, pct_* columns give the percentage of bootstrap replicates assigned
+to each status. Percentages sum to 100 per variable (up to rounding).
 }
 \details{
-In case of no groups, activity labels are assigned as follows:
-\itemize{
-\item \strong{active} — variables assigned non-zero weights by SPCA.
-\item \strong{dead} — variables assigned zero weights by SPCA.
-}
+A variable is active in a group when its SPCA loading is nonzero. A variable
+excluded in all groups is classified as undead in a given group only when it
+has absolute correlation above \code{threshold} with at least one variable
+selected by SPCA in that same group. Variables selected in other groups
+do not contribute to this classification.
 
-In case of two groups, labelled \code{c("A", "B")}, activity labels are assigned as follows:
-\itemize{
-\item \strong{both_dead} — variables assigned zero weights by SPCA performed on the expression data of \emph{both} groups.
-\item \strong{both_active} — variables assigned non-zero weights by SPCA in \emph{both} groups.
-\item \strong{active_A} — variables assigned non-zero weights only in group \code{"A"} and zero weights in group \code{"B"}.
-\item \strong{active_B} — variables assigned non-zero weights only in group \code{"B"} and zero weights in group \code{"A"}.
-}
+Bootstrap resampling is used to assess the stability of variable selection
+under repeated sampling. Selection frequencies describe the reproducibility
+of nonzero SPCA loadings and should not be interpreted as
+statistical significance or evidence of differential population support.
 
-If \code{return_information == TRUE}, the function additionally checks whether any
-\strong{both_dead} variables are highly correlated (Pearson's \eqn{r > threshold})
-with variables that are active in at least one group.
-Such variables are relabeled as follows:
-\itemize{
-\item \strong{undead_A} — correlated with active variables in group \code{"A"} only.
-\item \strong{undead_B} — correlated with active variables in group \code{"B"} only.
-\item \strong{both_undead} — correlated with active variables in \emph{both} groups.
+With the presence of groups, activity labels are \code{dead}, \code{active}, \verb{active_<label>},
+\code{undead}, and \verb{undead_<label>}. The labels \code{active} and \code{undead} indicate
+all groups. Bootstrap percentages use the selected variables from each
+corresponding group and bootstrap replicate, with within-group correlations
+calculated from the original expression matrices.
 }
+\examples{
+data("seam_demo", package = "seam")
+fit = spca_all_modules(
+ seam_demo$expression_data,
+ seam_demo$module_assignment,
+ lambda = 0.05, 
+ bootstrap = FALSE
+)
+activity = compute_activity(
+ fit, 
+ labels = seam_demo$labels
+)
+table(
+ activity$module, 
+ activity$activity
+)
 
-For more than two groups, the function applies analogous logic. Specifically:
-\itemize{
-\item \strong{active} — varaibles assigned non-zero weights by SPCA
-in \emph{at least two} groups.
-\item \strong{dead} — varibales assigned zero weights by SPCA
-in \emph{all} groups.
-\item If a variable is active \strong{only in one group}, it is labeled accordingly
-(e.g., \code{active_A}, \code{active_B}, \code{active_C}).
-\item If \code{return_information == TRUE}, dead variables may be relabeled as
-\strong{undead} variants based on high correlation with active variables in one or more groups,
-following the same principles as in the two-group case.
-}
 }

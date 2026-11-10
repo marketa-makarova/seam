@@ -2,57 +2,55 @@
 % Please edit documentation in R/plot_sparsity.R
 \name{plot_sparsity}
 \alias{plot_sparsity}
-\title{Plot percentage of inactive variables (sparsity) across modules}
+\title{Plot percentage of inactive variables (sparsity) across modules as a heatmap}
 \usage{
 plot_sparsity(
   spca_data,
-  modules = "all",
   labels = NA,
+  modules = "all",
   y_axis_labels = NA,
   cex = 1.2,
   main = "Dead variables [in \%]",
-  color_palette = blueWhiteRed(50),
+  color_palette = (grDevices::colorRampPalette(c("blue", "white", "red")))(50),
   show_legend = TRUE,
   show_size = TRUE
 )
 }
 \arguments{
-\item{spca_data}{A list containing SPCA decomposition results from the
-function \code{spca_all_modules} or \code{spca_all_modules_grid}.}
+\item{spca_data}{Result of spca_all_modules() or spca_all_modules_grid().}
 
-\item{modules}{Character or character vector. Allows for module selection. Defaults to \code{"all"}.}
+\item{labels}{Group labels, if present, in the same order as the expression data.}
 
-\item{labels}{Character vector. Provides group labels.
-These labels are used for activity assignment.}
+\item{modules}{Module labels to plot, or \code{"all"} (default).}
 
-\item{y_axis_labels}{A character vector for optional y-axis labels. Defaults to NULL.}
+\item{y_axis_labels}{Optional custom module labels.}
 
-\item{cex}{Numeric. Scaling factor for the heatmap text labels. Defaults to 1.2.}
+\item{cex}{Base text size.}
 
-\item{main}{Character. Title of the heatmap.}
+\item{main}{Plot title.}
 
-\item{color_palette}{Color palette for the heatmap. Default is \code{blueWhiteRed(50)}.}
+\item{color_palette}{Colors for the continuous heatmap scale.}
 
-\item{show_legend}{Logical. Defaults to TRUE.}
+\item{show_legend}{Logical. Whether to display the color legend.}
 
-\item{show_size}{Logical. Defaults to TRUE.}
+\item{show_size}{Logical. Whether to include module sizes in row labels.}
 }
 \value{
-A heatmap produced by \code{labeledHeatmap()} showing the percentage of zero weights per module and group.
+A ggplot object, printed and returned invisibly.
 }
 \description{
-Visualizes the proportion of zero weights ("dead variables")
-in each module for groups, if present.
-The resulting heatmap helps assess sparsity induced by SPCA.
+Cell colors show sparsity.
 }
-\details{
-For each module and each group,
-the percentage of zero entries in the module’s SPCA loading
-vector is calculated.
-These percentages indicate how sparse the component is.
-This is useful for understanding how many variables
-are “inactive” in each module, per group.
+\examples{
+data("seam_demo", package = "seam")
+fit = spca_all_modules(
+ seam_demo$expression_data,
+ seam_demo$module_assignment,
+ lambda = 0.05
+)
+plot_sparsity(
+ fit, 
+ labels = seam_demo$labels
+)
 
-The function requires the existence of a helper function \code{zeroPercent()}
-that computes the proportion of zero entries in a vector or matrix.
 }

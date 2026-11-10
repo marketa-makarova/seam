@@ -1,48 +1,37 @@
-#' Plot SPCA-based activity across modules as a bubble chart
+#' Plot variable activity statuses as a bubble chart
 #'
-#' This function visualizes the distribution of variable activity statuses 
-#' using a bubble chart. 
-#' Each bubble represents the count of variable in a given activity 
-#' category. The bubble size reflects 
-#' the count, and colors correspond to module assignments, if present.
-#' Activity statuses include three main states **active**, **dead**, and **undead**.
-#' Function is able to incorporate both groups and modules.
+#' Bubble size describes counts of variables assigned a given status.
+#' When bootstrap results are available, a second number optionally displays
+#' an average status count across bootstrap replicates.
 #'
-#' @param spca_data A list containing SPCA decomposition results from the 
-#' function \code{spca_all_modules} or \code{spca_all_modules_grid}.
-#' @param labels Character vector. Provides group labels. 
-#' These labels are used for activity assignment.
-#' @param modules Character or character vector. Allows for module selection. Defaults to \code{"all"}.
-#' @param return_information Logical. If \code{FALSE}, returns only raw activity 
-#' assignments. If \code{TRUE} performs additional correlation-based checks to 
-#' detect **undead** variables and updates the activity status accordingly. 
-#' Defaults to \code{TRUE}.
-#' @param threshold Numeric. The correlation threshold used to determine 
-#' whether a **dead** variable highly correlated with an active variable, 
-#' suggesting it should be assigned the status **undead**. 
-#' Default value is 0.8.
-#' @param cex Numeric. Font size for plot elements. 
-#' Passed to \code{theme_classic()} argument. 
-#' Defaults to 20.
-#' @param scale_range Numeric vector of length 2 defining the minimum and maximum sizes of the bubbles. 
-#' Defaults to \code{c(5, 30)}.
-#' @param number_color Character. Color of the text labels inside bubbles. Default is \code{"white"}.
-#' @param bubble_colors Optional vector or palette of colors to use for bubbles by module. If \code{NA}, uses \code{module_colors}.
+#' @param spca_data Result of spca_all_modules() or spca_all_modules_grid().
+#' @param labels Group labels, if present, in the same order as the expression data.
+#' @param return_information `TRUE` for refined undead classifications,
+#'   `FALSE` for raw selection, or `"both"` to print both plots.
+#' @param modules Module labels to plot, or `"all"` (default).
+#' @param threshold Absolute within-group correlation threshold for reclassification to undead status.
+#' @param cex Base text size.
+#' @param scale_range Minimum and maximum bubble sizes.
+#' @param number_color Color of numbers inside bubbles.
+#' @param bubble_colors Optional colors for modules; NA uses module colors when they are valid.
+#' @param show_bootstrap Show average bootstrap counts below original counts.
 #' 
-#' @details
-#' The function determines activity states based on whether the SPCA weights
-#' for a variables are zero or non-zero.
-#' Variables labeled **both_dead** but showing strong intra-module correlations 
-#' with active variables are reclassified as **undead** 
-#' for interpretability if option \code{return_information = TRUE}.
+#' @return A ggplot object, printed and returned invisibly.
 #' 
-#' For details about activity statuses refer to \code{\link{compute_activity}}.
-#'
-#' @return A \code{ggplot2} object is printed showing a bubble chart of 
-#' variable activity distributions across modules.
-#'
+#' @examples
+#' data("seam_demo", package = "seam")
+#' fit = spca_all_modules(
+#'  seam_demo$expression_data,
+#'  seam_demo$module_assignment,
+#'  lambda = 0.05, 
+#'  bootstrap = FALSE
+#' )
+#' plot_activity_bubble(
+#'  fit, 
+#'  labels = seam_demo$labels
+#' )
+#' 
 #' @export
-
 plot_activity_bubble = function(
     spca_data,
     labels,
@@ -52,77 +41,105 @@ plot_activity_bubble = function(
     cex = 20,
     scale_range = c(5, 30),
     number_color = "white",
-    bubble_colors = NA){
-  
-  if(!is.list(spca_data)){
-    stop("Invalid spca_data argument, must be a list.")
-  }
-  
-  if(length(scale_range) != 2){
-    warning("Argument scale_range should be a vector of length 2.")
-  }
-  
-  if(!is.numeric(threshold)){
-    stop("Invalid threshold argument value.")
-  }
-  
-  if(threshold <= 0 | threshold >= 1){
-    warning("Threshold argument value should be between 0 and 1.")
-  }
-  
-  if(length(labels) != length(spca_data$PCs)){
-    stop("Length of labels does not coincide with number of groups in spca_data.")
-  }
+    bubble_colors = NA,
+    show_bootstrap = TRUE){
 
-  if(sum(modules == "all") == 1){
-    module_colors = spca_data$module_colors
-  } else {
-    module_colors = modules
+  if(!is.list(spca_data) || is.null(spca_data$module_colors) || is.null(spca_data$PCs)) stop("Invalid spca_data.")
+  if(length(labels) != length(spca_data$PCs)){
+    stop("Length of labels does not match the number of groups.")
   }
-  
-  activity_table = compute_activity(spca_data = spca_data, labels = labels, threshold = threshold, return_information = return_information)
-  
-  all_combos = expand.grid(
-    module = module_colors,
-    activity = unique(activity_table$activity),
+  if(length(scale_range) != 2 || any(!is.finite(scale_range))){
+    stop("scale_range must contain two finite numbers.")
+  }
+  if(!is.numeric(threshold) || length(threshold) != 1 || is.na(threshold) || threshold <= 0 || threshold >= 1){
+    stop("threshold argument value must be a number between 0 and 1.")
+  }
+  module_colors = as.character(spca_data$module_colors)
+  all_modules = as.character(spca_data$module_colors)
+  selected_modules = if(length(modules) == 1 && identical(modules, "all")){
+    module_colors
+  } else {
+    as.character(modules)
+  }
+  if(!length(selected_modules) || anyNA(selected_modules) || anyDuplicated(selected_modules) || !all(selected_modules %in% all_modules)){
+    stop("Unknown module in modules.")
+  } 
+
+  # prepare plot data
+  activity_table = compute_activity(
+    spca_data = spca_data,
+    labels = labels,
+    threshold = threshold,
+    return_information = return_information
+  )
+  activity_table$module = as.character(activity_table$module)
+  activity_table = activity_table[activity_table$module %in% selected_modules, , drop = FALSE]
+  pct_cols = grep("^pct_", names(activity_table), value = TRUE)
+  statuses = unique(c(as.character(activity_table$activity), sub("^pct_", "", pct_cols)))
+  # keep the same activity order regardless of which categories are observed
+  canonical = c("dead", "active", paste0("active_", labels), "undead", paste0("undead_", labels))
+  statuses = c(intersect(canonical, statuses), setdiff(statuses, canonical))
+
+  data = expand.grid(
+    module = selected_modules,
+    activity = statuses,
     stringsAsFactors = FALSE
   )
-  
-  data = activity_table |>
-    mutate(activity = factor(.data$activity)) |>
-    group_by(.data$module, .data$activity) |>
-    summarize(counts = n()) |>
-    right_join(all_combos, by = c("module", "activity")) |>
-    mutate(counts = ifelse(is.na(.data$counts), 0, .data$counts))
-  
-  if(any(is.na(spca_data$module_colors))) {
-    x_tick_labels = element_blank()
-    x_axis_label = element_blank()
-  } else {
-    x_tick_labels = element_text(size = cex)
-    x_axis_label = element_text(size = cex)
+  data$counts = integer(nrow(data))
+  data$bootstrap_mean = rep(NA_real_, nrow(data))
+
+  for(i in seq_len(nrow(data))){
+    rows = activity_table$module == data$module[i]
+    data$counts[i] = sum(rows & activity_table$activity == data$activity[i])
+    col = paste0("pct_", data$activity[i])
+    if(show_bootstrap && col %in% pct_cols){
+      data$bootstrap_mean[i] = sum(activity_table[[col]][rows]) / 100
+    }
   }
 
-  print(
-    ggplot(data,
-         aes(x = .data$module, 
-             y = .data$activity,
-             colour = .data$module,
-             size = .data$counts)) +
-    geom_point() +
-    geom_text(aes(label = .data$counts), 
-              colour = number_color, 
-              size = 4) +
-    scale_x_discrete(position = "top") +
-    labs(x = NULL, y = NULL) +
-    theme_classic(base_size = cex) + 
-    theme(legend.position = "none",
-          panel.grid = element_blank(),
-          axis.ticks = element_blank()) +
-    scale_size(range = scale_range) + 
-    scale_color_manual(values = if(is.na(bubble_colors)){sort(module_colors)}else{bubble_colors}) +
-    theme(axis.title.x = x_tick_labels,
-          axis.text.x = x_axis_label)
-  )
+  has_bootstrap = show_bootstrap && any(is.finite(data$bootstrap_mean))
+  data$text = if(has_bootstrap){
+    paste0(data$counts, "\n(", format(round(data$bootstrap_mean, 1), nsmall = 1), ")")
+  } else {
+    as.character(data$counts)
+  }
+  data$module = factor(data$module, levels = selected_modules)
+  data$activity = factor(data$activity, levels = rev(statuses))
 
+  # selecting colours when none are supplied
+  if(length(bubble_colors) == 1 && is.na(bubble_colors)){
+    valid_colors = vapply(selected_modules, function(x){
+      !inherits(try(grDevices::col2rgb(x), silent = TRUE), "try-error")
+    }, logical(1))
+    colors = if(all(valid_colors)) selected_modules else
+      grDevices::hcl.colors(length(selected_modules), "Dark 3")
+  } else {
+    if(length(bubble_colors) != length(selected_modules)){
+      stop("bubble_colors must have one color per selected module.")
+    }
+    colors = bubble_colors
+  }
+  names(colors) = selected_modules
+
+  # plot
+  p = ggplot2::ggplot(data, ggplot2::aes(x = .data$module, y = .data$activity, color = .data$module, size = .data$counts)) +
+    ggplot2::geom_point() +
+    ggplot2::geom_text(ggplot2::aes(label = .data$text), color = number_color, size = 4, lineheight = 0.9) +
+    ggplot2::scale_x_discrete(position = "top") +
+    ggplot2::scale_size(range = scale_range) +
+    ggplot2::scale_color_manual(values = colors) +
+    ggplot2::labs(x = NULL, y = NULL) +
+    ggplot2::theme_classic(base_size = cex) +
+    ggplot2::theme(
+      legend.position = "none",
+      panel.grid = ggplot2::element_blank(),
+      axis.ticks = ggplot2::element_blank()
+    )
+
+  if(all(is.na(spca_data$module_colors))){
+    p = p + ggplot2::theme(axis.text.x.top = ggplot2::element_blank())
+  }
+
+  print(p)
+  invisible(p)
 }

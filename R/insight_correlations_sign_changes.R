@@ -1,162 +1,144 @@
-#' Visualize sign changes in variable-trait correlations due to SPCA weights
+#' Visualize variable-trait correlations and negative SPCA weights
 #'
-#' This function explores how weights between variables differ in signs between 
-#' classic eigengenes and SPCA-derived eigengenes. 
-#' It visualizes the distribution 
-#' of raw and weighted correlations and 
-#' reports the proportion of variables whose weighted correlation signs 
-#' have changed due to sign change in weights. If modules/clusters are present, 
-#' each module will have its own plot created.
+#' Selects module-trait pairs exceeding the absolute SPCA correlation
+#' threshold in at least one group. For each pair, plots the density of
+#' unweighted variable-trait correlations among variables active in SPCA.
+#' The title reports the percentage of active variables with negative
+#' SPCA weights in each group.
 #'
-#' @param module_trait_correlations A list of module trait correlations
-#' computed using the \code{compute_module_trait_correlations} function.
-#' @param spca_data A list containing SPCA decomposition results from the 
-#' function \code{spca_all_modules} or \code{spca_all_modules_grid}.
-#' @param labels Character vector. Provides group labels. 
-#' These labels are used for activity assignment.
-#' @param col Color or vector of colors if groups are present. 
-#' Used for plotting points.
-#' @param interest_threshold Numeric. Only module–trait correlations greater
-#' than this value (in absolute terms) are considered interesting and plotted. 
-#' Default is 0.6.
-#' @param cex Numeric. Font size for plot elements. 
-#' Passed to \code{theme_classic()} argument. 
-#' Defaults to 20.
-#' @param xlab Character. X-axis label.
-#' @param ylab Character. Y-axis label.
-#'
-#' @return One or more ggplot2 plots are printed to the active graphics device.
-#' If no correlations exceed the interest_threshold, a message is returned instead.
-#'
+#' @param module_trait_correlations Result of compute_module_trait_correlations()
+#'   with mode = "spca" or "both".
+#' @param spca_data Result of spca_all_modules() or spca_all_modules_grid().
+#' @param labels Group labels, if present, in the same order as the expression data.
+#' @param col Optional colors for the groups.
+#' @param interest_threshold Miminal absolute module-trait correlation threshold.
+#' @param cex Base text size.
+#' @param xlab,ylab Axis labels.
+#' 
+#' @return A named list of ggplot objects is returned invisibly. Plots are printed separately.
+#' 
+#' @examples
+#' \donttest{
+#' data("seam_demo", package = "seam")
+#' fit = spca_all_modules(
+#'  seam_demo$expression_data,
+#'  seam_demo$module_assignment,
+#'  lambda = 0.05,
+#'  bootstrap = FALSE
+#' )
+#' mtc = compute_module_trait_correlations(
+#'  seam_demo$trait_data, 
+#'  fit, 
+#'  seam_demo$module_assignment,
+#'  mode = "both")
+#' insight_correlations_sign_changes(
+#'  mtc, 
+#'  fit,
+#'  labels = seam_demo$labels,
+#'  interest_threshold = 0.2
+#' )
+#' }
+#' 
 #' @export
-
 insight_correlations_sign_changes = function(
-    module_trait_correlations, 
-    spca_data, 
+    module_trait_correlations,
+    spca_data,
     labels,
-    col,
-    interest_threshold = 0.6, 
-    cex = 20, 
+    col = NULL,
+    interest_threshold = 0.6,
+    cex = 20,
     xlab = "Correlations",
     ylab = ""){
-  
-  if(!is.list(spca_data)){
-    stop("Invalid spca_data argument, must be a list.")
+
+  if(!is.list(spca_data) || is.null(module_trait_correlations$mtc_spca)){
+    stop("spca_data and SPCA module-trait correlations are required.")
   }
-  
-  if(!is.numeric(interest_threshold)){
-    stop("Invalid interest_threshold argument value.")
+  if(!is.numeric(interest_threshold) || length(interest_threshold) != 1 ||
+     !is.finite(interest_threshold) || interest_threshold <= 0 || interest_threshold >= 1){
+    stop("interest_threshold must be between 0 and 1.")
   }
-  
-  if(interest_threshold <= 0 | interest_threshold >= 1){
-    warning("Threshold argument value should be between 0 and 1.")
-  }
-  
-  if(length(labels) != length(spca_data$PCs)){
-    stop("Length of labels does not coincide with number of groups in spca_data.")
-  }
-  
   nsets = length(spca_data$vs)
-  
-  # select positions of interesting modules & traits
-  positions = matrix(NA, ncol = 2, nrow = 0)
-  for(set in 1:nsets){
-    positions = rbind(positions, which(abs(module_trait_correlations[[1]][[set]]) > interest_threshold, arr.ind = TRUE) |> as.data.frame() |> mutate(set = set))
+  if(length(labels) != nsets || length(module_trait_correlations$mtc_spca) != nsets ||
+     length(module_trait_correlations$trait_data) != nsets){
+    stop("Group labels and correlation results must match spca_data.")
   }
-  positions$trait = colnames(module_trait_correlations[[1]][[1]])[positions$col]
-  positions$module = rownames(module_trait_correlations[[1]][[1]])[positions$row]
-  
-  # error
-  if(nrow(positions) == 0){return(paste("No interesting correlations, lower interest_threshold."))}
-  
-  # compute correlations 
-  for(i in 1:nrow(positions)){
-    set = positions$set[i]
-    # create correlations
-    cors = data.frame(variable_id = colnames(spca_data$module_matrices[[set]][[positions[i, 1]]]))
-    for(set in 1:nsets){
-      new_column = paste("cor", labels[set], sep = "_")
-      cors = cors |>
-        mutate(
-          !!new_column := cor(
-            spca_data$module_matrices[[set]][[positions[i, 1]]], 
-            module_trait_correlations$trait_data[[set]][positions[i, 2]],
-            use = "pairwise.complete.obs"
-          ) |> as.vector()
-        )
+
+  # prepare necessary variables
+  reference = module_trait_correlations$mtc_spca[[1]]
+  module_colors = spca_data$module_colors
+  if(is.null(colnames(reference))) stop("Trait columns must have names.")
+  interesting = matrix(FALSE, nrow(reference), ncol(reference))
+  for(set in seq_len(nsets)){
+    current = module_trait_correlations$mtc_spca[[set]]
+    interesting = interesting | (is.finite(current) & abs(current) > interest_threshold)
+  }
+  positions = which(interesting, arr.ind = TRUE)
+  if(nrow(positions) == 0){
+    message("No interesting correlations; lower interest_threshold.")
+    return(invisible(list()))
+  }
+  colors = if(is.null(col)) grDevices::hcl.colors(nsets, "Dark 3") else rep(col, length.out = nsets)
+  names(colors) = labels
+  plots = list()
+
+  # prepare plot data and plot
+  for(i in seq_len(nrow(positions))){
+    module_index = positions[i, 1]
+    trait_index = positions[i, 2]
+    module_name = rownames(reference)[module_index]
+    trait_name = colnames(reference)[trait_index]
+    if(is.null(module_name)) module_name = spca_data$module_colors[module_index]
+    if(is.null(trait_name)) trait_name = as.character(trait_index)
+
+    densities = list()
+    percentages = rep(NA_real_, nsets)
+
+    for(set in seq_len(nsets)){
+      x = spca_data$module_matrices[[set]][[module_index]]
+      weights = spca_data$vs[[set]][[module_index]]
+      trait = module_trait_correlations$trait_data[[set]][, trait_index]
+      if(length(weights) != ncol(x) || length(trait) != nrow(x)) stop("Weights, expression matrix, and trait data dimensions do not match.")
+
+      # filter out dead variables
+      active = is.finite(weights) & weights != 0
+      if(any(active)){
+        percentages[set] = mean(weights[active] < 0) * 100
+        cors = suppressWarnings(stats::cor(x[, active, drop = FALSE], trait, use = "pairwise.complete.obs"))
+        values = as.vector(cors)
+        values = values[is.finite(values)]
+        if(length(values)){
+          densities[[length(densities) + 1]] = data.frame(cor = values, label = labels[set], stringsAsFactors = FALSE)
+        }
+      }
     }
-    
-    # create table of correlations, weights, correlations * weights
-    activity_table = compute_activity(spca_data = spca_data, labels = labels, return_information = FALSE)
-    cors =  cors |>
-      left_join(activity_table, by = join_by("variable_id")) |>
-      arrange(.data$activity) |>
-      mutate(
-        num = 1:nrow(cors),                      
-        variable_id = factor(.data$variable_id),
-        variable_id = reorder(.data$variable_id, .data$num, mean)) |>
-      filter(!.data$activity %in% c("dead", "undead"))
-    
-    new_cols = setNames(
-      lapply(labels, function(lbl) {
-        cors[[paste0("w_", lbl)]] * cors[[paste0("cor_", lbl)]]
-      }),
-      paste0("w_cor_", labels)
+
+    # prepare heading
+    if(!length(densities)) next
+    plot_data = do.call(rbind, densities)
+    plot_data$label = factor(plot_data$label, levels = labels)
+    percentage_text = paste0(
+      labels, ": ",
+      ifelse(is.na(percentages), "NA", sprintf("%.0f", percentages)),
+      "% negative weights"
     )
-    
-    cors = bind_cols(cors, as.data.frame(new_cols))
-    
-    # % of variables switching signs of correlation
-    sign_changes = cors |>
-      summarize(
-        across(
-          starts_with("w_"),
-          ~ mean(sign(.x) == -1) * 100,
-          .names = "percent_neg_{.col}"
-        )
-      ) |> select(1:length(labels)) # select only active, how many % are -1
-    
-    # for plotting
-    cors_density = cors |> 
-      tidyr::pivot_longer(
-        cols = matches("^(cor_|w_cor_)"),
-        names_to = c(".value", "label"),
-        names_pattern = "(w?_?cor)_(.*)"
-      )    
-    
-    # title
-    if (sum(is.na(spca_data$module_colors)) == 0) {
-      title <- paste(
-        positions$module[i],
-        " module correlated with ",
-        positions$trait[i],
-        "\n",
-        paste(
-          paste0(labels, ": ", round(sign_changes), " % changed signs"),
-          collapse = "\n"
-        ),
-        sep = ""
-      )
+    heading = if(length(spca_data$module_colors) == 1 && spca_data$module_colors[1] == "all"){
+      paste0("Correlation with ", trait_name)
     } else {
-      title <- paste(
-        "correlation with ",
-        positions$trait[i],
-        "\n",
-        paste(
-          paste0(labels, ": ", round(sign_changes), " % changed signs"),
-          collapse = "\n"
-        ),
-        sep = ""
-      )
+      paste0(module_name, " module correlated with ", trait_name)
     }
-    
-    
-    # density plot
-    print(ggplot(data = cors_density, aes(x = cor, group = .data$label, fill = .data$label)) +
-            scale_fill_manual(values = col, name = "Group") +
-            geom_density(alpha = 0.4) +
-            theme_classic(base_size = cex) + 
-            labs(x = xlab, y = ylab) + 
-            ggtitle(title))
+    heading = paste0(heading, "\n", paste(percentage_text, collapse = "\n"))
+
+    # plot
+    p = ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$cor, fill = .data$label)) +
+      ggplot2::geom_density(alpha = 0.4, na.rm = TRUE) +
+      ggplot2::scale_fill_manual(values = colors, name = "Group", drop = FALSE) +
+      ggplot2::theme_classic(base_size = cex) +
+      ggplot2::labs(x = xlab, y = ylab, title = heading)
+
+    key = paste(module_name, trait_name, sep = "__")
+    plots[[key]] = p
+    print(p)
   }
+
+  invisible(plots)
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/plot_activity_bubble.R
 \name{plot_activity_bubble}
 \alias{plot_activity_bubble}
-\title{Plot SPCA-based activity across modules as a bubble chart}
+\title{Plot variable activity statuses as a bubble chart}
 \usage{
 plot_activity_bubble(
   spca_data,
@@ -13,58 +13,51 @@ plot_activity_bubble(
   cex = 20,
   scale_range = c(5, 30),
   number_color = "white",
-  bubble_colors = NA
+  bubble_colors = NA,
+  show_bootstrap = TRUE
 )
 }
 \arguments{
-\item{spca_data}{A list containing SPCA decomposition results from the
-function \code{spca_all_modules} or \code{spca_all_modules_grid}.}
+\item{spca_data}{Result of spca_all_modules() or spca_all_modules_grid().}
 
-\item{labels}{Character vector. Provides group labels.
-These labels are used for activity assignment.}
+\item{labels}{Group labels, if present, in the same order as the expression data.}
 
-\item{modules}{Character or character vector. Allows for module selection. Defaults to \code{"all"}.}
+\item{modules}{Module labels to plot, or \code{"all"} (default).}
 
-\item{threshold}{Numeric. The correlation threshold used to determine
-whether a \strong{dead} variable highly correlated with an active variable,
-suggesting it should be assigned the status \strong{undead}.
-Default value is 0.8.}
+\item{threshold}{Absolute within-group correlation threshold for reclassification to undead status.}
 
-\item{return_information}{Logical. If \code{FALSE}, returns only raw activity
-assignments. If \code{TRUE} performs additional correlation-based checks to
-detect \strong{undead} variables and updates the activity status accordingly.
-Defaults to \code{TRUE}.}
+\item{return_information}{\code{TRUE} for refined undead classifications,
+\code{FALSE} for raw selection, or \code{"both"} to print both plots.}
 
-\item{cex}{Numeric. Font size for plot elements.
-Passed to \code{theme_classic()} argument.
-Defaults to 20.}
+\item{cex}{Base text size.}
 
-\item{scale_range}{Numeric vector of length 2 defining the minimum and maximum sizes of the bubbles.
-Defaults to \code{c(5, 30)}.}
+\item{scale_range}{Minimum and maximum bubble sizes.}
 
-\item{number_color}{Character. Color of the text labels inside bubbles. Default is \code{"white"}.}
+\item{number_color}{Color of numbers inside bubbles.}
 
-\item{bubble_colors}{Optional vector or palette of colors to use for bubbles by module. If \code{NA}, uses \code{module_colors}.}
+\item{bubble_colors}{Optional colors for modules; NA uses module colors when they are valid.}
+
+\item{show_bootstrap}{Show average bootstrap counts below original counts.}
 }
 \value{
-A \code{ggplot2} object is printed showing a bubble chart of
-variable activity distributions across modules.
+A ggplot object, printed and returned invisibly.
 }
 \description{
-This function visualizes the distribution of variable activity statuses
-using a bubble chart.
-Each bubble represents the count of variable in a given activity
-category. The bubble size reflects
-the count, and colors correspond to module assignments, if present.
-Activity statuses include three main states \strong{active}, \strong{dead}, and \strong{undead}.
-Function is able to incorporate both groups and modules.
+Bubble size describes counts of variables assigned a given status.
+When bootstrap results are available, a second number optionally displays
+an average status count across bootstrap replicates.
 }
-\details{
-The function determines activity states based on whether the SPCA weights
-for a variables are zero or non-zero.
-Variables labeled \strong{both_dead} but showing strong intra-module correlations
-with active variables are reclassified as \strong{undead}
-for interpretability if option \code{return_information = TRUE}.
+\examples{
+data("seam_demo", package = "seam")
+fit = spca_all_modules(
+ seam_demo$expression_data,
+ seam_demo$module_assignment,
+ lambda = 0.05, 
+ bootstrap = FALSE
+)
+plot_activity_bubble(
+ fit, 
+ labels = seam_demo$labels
+)
 
-For details about activity statuses refer to \code{\link{compute_activity}}.
 }

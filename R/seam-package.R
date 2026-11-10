@@ -40,6 +40,8 @@ NULL
 #' @importFrom ggplot2 aes
 #' @importFrom ggplot2 coord_flip
 #' @importFrom ggplot2 element_blank
+#' @importFrom ggplot2 element_text
+#' @importFrom ggplot2 expansion
 #' @importFrom ggplot2 facet_grid
 #' @importFrom ggplot2 facet_wrap
 #' @importFrom ggplot2 geom_bar
@@ -49,11 +51,13 @@ NULL
 #' @importFrom ggplot2 geom_point
 #' @importFrom ggplot2 geom_segment
 #' @importFrom ggplot2 geom_tile
+#' @importFrom ggplot2 geom_text
 #' @importFrom ggplot2 ggplot
 #' @importFrom ggplot2 ggtitle
 #' @importFrom ggplot2 labs
 #' @importFrom ggplot2 scale_color_manual
 #' @importFrom ggplot2 scale_fill_gradient2
+#' @importFrom ggplot2 scale_fill_gradientn
 #' @importFrom ggplot2 scale_fill_manual
 #' @importFrom ggplot2 scale_x_continuous
 #' @importFrom ggplot2 scale_x_discrete
@@ -65,7 +69,6 @@ NULL
 #' @importFrom graphics legend
 #' @importFrom graphics par
 #' @importFrom graphics text
-#' @importFrom impute impute.knn
 #' @importFrom rlang .data
 #' @importFrom rlang :=
 #' @importFrom stats as.dist
@@ -77,11 +80,10 @@ NULL
 #' @importFrom stats sd
 #' @importFrom stats setNames
 #' @importFrom stats var
+#' @importFrom stats quantile
 #' @importFrom tidyr pivot_longer
 #' @importFrom utils head
 #' @importFrom utils tail
 #' @importFrom utils write.csv
-#' @importFrom WGCNA blueWhiteRed
-#' @importFrom WGCNA labeledHeatmap
 ## usethis namespace: end
 NULL

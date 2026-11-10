@@ -2,7 +2,7 @@
 % Please edit documentation in R/insight_correlations_lollipop.R
 \name{insight_correlations_lollipop}
 \alias{insight_correlations_lollipop}
-\title{Visualize variable–trait correlations as lollipop plot}
+\title{Lollipop plot of variable-trait correlations and SPCA-weighted correlations}
 \usage{
 insight_correlations_lollipop(
   module_trait_correlations,
@@ -15,91 +15,67 @@ insight_correlations_lollipop(
   n = 10,
   xlab = "",
   ylab = "Weighted correlations",
-  col,
-  col_connective = 8,
+  col = NULL,
   col_active = 3,
   y_dodge = 2
 )
 }
 \arguments{
-\item{module_trait_correlations}{A list of module trait correlations
-computed using the \code{compute_module_trait_correlations} function.}
+\item{module_trait_correlations}{Result of compute_module_trait_correlations()
+calculated with mode = "spca" or "both".}
 
-\item{spca_data}{A list containing SPCA decomposition results from the
-function \code{spca_all_modules} or \code{spca_all_modules_grid}.}
+\item{spca_data}{Result of spca_all_modules() or spca_all_modules_grid().}
 
-\item{type}{Character. Specifies which type of plot to create, options are
-\code{"weighted"}, \code{"classic"} or \code{"both"}. Defaults to \code{"both"}.}
+\item{type}{One of "classic" (unweighted), "weighted", or "both".}
 
-\item{interest_threshold}{Numeric. Only module–trait correlations greater
-than this value (in absolute terms) are considered interesting and plotted.
-Default is 0.6.}
+\item{interest_threshold}{Miminal absolute module-trait correlation threshold.}
 
-\item{cex}{Numeric. Font size for plot elements.
-Passed to \code{theme_classic()} argument.
-Defaults to 20.}
+\item{cex}{Base text size.}
 
-\item{cex_point}{Numeric. Size of points visualising correlation.
-Defaults to 20.}
+\item{cex_point}{Point size.}
 
-\item{labels}{Character vector. Provides group labels.
-These labels are used for activity assignment.}
+\item{labels}{Group labels, if present, in the same order as the expression data.}
 
-\item{n}{Integer. The number of top variables
-(by absolute weighted correlation) to label on the y-axis.
-Defaults to 5.}
+\item{n}{Number of top variable labels to display per plot.}
 
-\item{xlab}{Character. X-axis label.}
+\item{xlab, ylab}{Axis labels.}
 
-\item{ylab}{Character. Y-axis label.}
+\item{col}{Optional colors for the groups.}
 
-\item{col}{Color or vector of colors if groups are present.
-Used for plotting points.}
+\item{col_active}{Color of segments for variables active in multiple groups.}
 
-\item{col_connective}{Color of connective lines between correlation values.
-Defaults to 8 (grey).}
-
-\item{col_active}{Color for variables that are active in both groups.
-Default is 3 (green).}
-
-\item{y_dodge}{Integer. Used to spread out y-axis labels to avoid label overlap.
-Defaults to 2.}
+\item{y_dodge}{Number of rows used to dodge variable labels.}
+}
+\value{
+A named list of ggplot objects is returned invisibly. Plots are printed separately.
 }
 \description{
-This function creates lollipop-style visualizations of
-correlations between variables and external clinical traits.
-If groups are present, it highlights
-differences between them using SPCA as feature selection method. Optionally,
-weighted correlations can be used to gain insight into how variables contribute
-to sparse eigengene-trait correlations. If modules are present,
-each module is plotted separately.
+Selects module-trait pairs whose SPCA eigengene correlation
+exceeds interest_threshold in at least one group. For each pair, plots
+variable-trait correlations and/or correlations multiplied by SPCA weights.
+Original estimates are used whether or not spca_data contains bootstrap fits.
 }
-\details{
-The behavior of the plot depends on the value of the parameter \code{type}:
-\itemize{
-\item \code{"classic"} — plots standard variable–trait correlations as a lollipop plot.
-Correlations are computed directly between each variable and the trait.
-
-\item \code{"weighted"} — plots weighted variable–trait correlations, defined as the
-variable–trait correlation multiplied by the SPCA weight assigned to the variable.
-This emphasizes variables that are both strongly associated with the trait and
-strongly weighted by SPCA.
-
-\item \code{"both"} — produces a two-panel plot showing \code{"classic"} (unweighted)
-and \code{"weighted"} correlations side by side for direct comparison.
+\examples{
+\donttest{
+data("seam_demo", package = "seam")
+fit = spca_all_modules(
+ seam_demo$expression_data,
+ seam_demo$module_assignment,
+ lambda = 0.05, 
+ bootstrap = FALSE
+)
+mtc = compute_module_trait_correlations(
+ seam_demo$trait_data, 
+ fit,
+ seam_demo$module_assignment,
+ mode = "both")
+insight_correlations_lollipop(
+ mtc, 
+ fit, 
+ labels = seam_demo$labels,
+ interest_threshold = 0.2, 
+ n = 5
+)
 }
 
-If multiple groups are present, variable-trait correlations are computed separately for each group.
-Group-specific correlations are displayed within the same plot and are differentiated
-by color to facilitate comparison of group-wise association patterns.
-
-The parameter \code{n} controls how many variables are labeled on the y-axis.
-Specifically, only the top \code{n} variables with the strongest absolute (weighted or
-unweighted, depending on \code{type}) correlations are labeled.
-If multiple labeled variables would overlap on the y-axis, the \code{y_dodge} parameter
-is used to vertically offset labels to improve readability.
-
-This visualization facilitates identification of biologically relevant drivers of
-module–trait associations. In particular, weighted correlations can reveal key driver
-variables that differentiate between groups.
 }

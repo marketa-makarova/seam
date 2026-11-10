@@ -1,88 +1,114 @@
-#' Plot percentage of inactive variables (sparsity) across modules
+#' Plot percentage of inactive variables (sparsity) across modules as a heatmap
 #'
-#' Visualizes the proportion of zero weights ("dead variables") 
-#' in each module for groups, if present. 
-#' The resulting heatmap helps assess sparsity induced by SPCA.
+#' Cell colors show sparsity.
 #'
-#' @param spca_data A list containing SPCA decomposition results from the 
-#' function \code{spca_all_modules} or \code{spca_all_modules_grid}.
-#' @param labels Character vector. Provides group labels. 
-#' These labels are used for activity assignment.
-#' @param modules Character or character vector. Allows for module selection. Defaults to \code{"all"}.
-#' @param cex Numeric. Scaling factor for the heatmap text labels. Defaults to 1.2.
-#' @param main Character. Title of the heatmap.
-#' @param color_palette Color palette for the heatmap. Default is \code{blueWhiteRed(50)}.
-#' @param show_legend Logical. Defaults to TRUE.
-#' @param show_size Logical. Defaults to TRUE.
-#' @param y_axis_labels A character vector for optional y-axis labels. Defaults to NULL.
-#'
-#' @details
-#' For each module and each group, 
-#' the percentage of zero entries in the module’s SPCA loading
-#' vector is calculated.
-#' These percentages indicate how sparse the component is. 
-#' This is useful for understanding how many variables
-#' are “inactive” in each module, per group.
-#'
-#' The function requires the existence of a helper function \code{zeroPercent()}
-#' that computes the proportion of zero entries in a vector or matrix.
-#'
-#' @return A heatmap produced by \code{labeledHeatmap()} showing the percentage of zero weights per module and group.
-#' @importFrom WGCNA labeledHeatmap
+#' @param spca_data Result of spca_all_modules() or spca_all_modules_grid().
+#' @param labels Group labels, if present, in the same order as the expression data.
+#' @param modules Module labels to plot, or `"all"` (default).
+#' @param y_axis_labels Optional custom module labels.
+#' @param cex Base text size.
+#' @param main Plot title.
+#' @param color_palette Colors for the continuous heatmap scale.
+#' @param show_legend Logical. Whether to display the color legend.
+#' @param show_size Logical. Whether to include module sizes in row labels.
+#' 
+#' @return A ggplot object, printed and returned invisibly.
+#' 
+#' @examples
+#' data("seam_demo", package = "seam")
+#' fit = spca_all_modules(
+#'  seam_demo$expression_data,
+#'  seam_demo$module_assignment,
+#'  lambda = 0.05
+#' )
+#' plot_sparsity(
+#'  fit, 
+#'  labels = seam_demo$labels
+#' )
+#' 
 #' @export
-
 plot_sparsity = function(
-    spca_data,
-    modules = "all",
-    labels = NA,
-    y_axis_labels = NA,
-    cex = 1.2,
-    main = "Dead variables [in %]",
-    color_palette = blueWhiteRed(50),
-    show_legend = TRUE,
-    show_size = TRUE){
-  
-  if(!is.list(spca_data)){
-    stop("Invalid spca_data argument, must be a list.")
-  }
-  
+  spca_data,
+  labels = NA,
+  modules = "all",
+  y_axis_labels = NA,
+  cex = 1.2,
+  main = "Dead variables [in %]",
+  color_palette = grDevices::colorRampPalette(c("blue", "white", "red"))(50),
+  show_legend = TRUE,
+  show_size = TRUE){
+
+  if(!is.list(spca_data)) stop("Invalid spca_data.")
   nsets = length(spca_data$PCs)
-  
-  if(length(labels) != nsets){
-    stop("Length of labels does not coincide with number of groups in spca_data.")
+  if(length(labels) != nsets) stop("Length of labels does not match the number of groups.")
+  all_modules = as.character(spca_data$module_colors)
+  if(!length(modules) || anyNA(modules) || anyDuplicated(modules)){
+    stop("Unknown module in modules.")
   }
-  
-  if(sum(modules == "all") == 1){
-    modules = 1:length(spca_data$module_colors)
-    module_colors = spca_data$module_colors
+  if(length(modules) == 1 && identical(modules, "all")){
+    modules = seq_along(all_modules)
   } else {
-    module_colors = modules
-    modules = which(spca_data$module_colors %in% modules) 
+    if(!all(modules %in% all_modules)) stop("Unknown module in modules.")
+    modules = match(modules, all_modules)
   }
-  
-  percentage_of_zeroes_matrix = matrix(NA, ncol = nsets, nrow = length(modules))
-  module_sizes = spca_data$module_sizes
-  
-  for(set in 1:nsets){
-    for(i in modules){
-      percentage_of_zeroes_matrix[which(modules == i), set] = spca_data$vs[[set]][[i]] |> zeroPercent()
+
+  # prepare plot data
+  module_colors = spca_data$module_colors[modules]
+  module_sizes = spca_data$module_sizes[modules]
+  percentage_matrix = matrix(NA_real_, nrow = length(modules), ncol = nsets)
+  text_matrix = matrix(NA_character_, nrow = length(modules), ncol = nsets)
+
+  for(set in seq_len(nsets)){
+    for(i in seq_along(modules)){
+      weights = spca_data$vs[[set]][[modules[i]]]
+      percentage = sum(weights == 0) / length(weights) * 100
+
+      percentage_matrix[i, set] = percentage
+      text_matrix[i, set] = as.character(round(percentage, 1))
     }
   }
 
-  
-  y_axis_labels = paste0(
-    ifelse(is.na(module_colors), yes = "", no = module_colors),
-    if(show_size) paste0(" (", module_sizes, ")") else ""
-  )[modules]
-  
-  labeledHeatmap(Matrix = percentage_of_zeroes_matrix,
-                 xLabels = labels,
-                 yLabels = y_axis_labels,
-                 ySymbols = module_colors,
-                 colors = color_palette,
-                 plotLegend = show_legend,
-                 textMatrix = percentage_of_zeroes_matrix,
-                 cex.text = cex,
-                 zlim = c(0, 100),
-                 main = main)
+  if(length(y_axis_labels) == 1 && is.na(y_axis_labels)){
+    y_axis_labels = paste0(
+      ifelse(is.na(module_colors), "", module_colors),
+      if(show_size) paste0(" (", module_sizes, ")") else ""
+    )
+  }
+
+  if(length(y_axis_labels) != length(modules)){
+    stop("Length of y_axis_labels must match the number of selected modules.")
+  }
+
+  plot_data = data.frame(
+    group = rep(seq_len(nsets), each = length(modules)),
+    module = rep(seq_along(modules), times = nsets),
+    percentage = as.vector(percentage_matrix),
+    text = as.vector(text_matrix)
+  )
+  plot_data$group = factor(plot_data$group, levels = seq_len(nsets), labels = labels)
+  plot_data$module = factor(plot_data$module,
+                            levels = rev(seq_along(modules)),
+                            labels = rev(y_axis_labels))
+
+  p = ggplot(plot_data, aes(x = .data$group, y = .data$module, fill = .data$percentage)) +
+    geom_tile(color = "white", linewidth = 0.5) +
+    geom_text(aes(label = .data$text), size = cex * 3.5) +
+    scale_fill_gradientn(
+      colors = color_palette,
+      limits = c(0, 100),
+      name = "Dead variables [%]"
+    ) +
+    scale_x_discrete(position = "top") +
+    labs(x = NULL, y = NULL, title = main) +
+    theme_minimal(base_size = 14) +
+    theme(
+      aspect.ratio = 0.8,
+      panel.grid = element_blank(),
+      axis.ticks = element_blank(),
+      plot.title = element_text(hjust = 0.5),
+      legend.position = if(show_legend) "right" else "none"
+    )
+
+  print(p)
+  invisible(p)
 }

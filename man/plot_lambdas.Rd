@@ -2,7 +2,7 @@
 % Please edit documentation in R/plot_lambdas.R
 \name{plot_lambdas}
 \alias{plot_lambdas}
-\title{Plot SPCA sparsity and explained variance for different values of lambda}
+\title{Plot SPCA sparsity and explained variance across different lambda values}
 \usage{
 plot_lambdas(
   expression_data,
@@ -15,46 +15,51 @@ plot_lambdas(
   legend_position = "right",
   linewidth = 2,
   xlab = "Lambda",
-  ylab = "Percentage of dead variables"
+  ylab = "Percentage of dead variables",
+  separate_modules = FALSE
 )
 }
 \arguments{
-\item{expression_data}{A list containing expression matrices for each group.}
+\item{expression_data}{List of numeric expression matrices (samples in rows).}
 
-\item{module_assignment}{Character vector. Assigns
-module/cluster to each variable by color. Cannot
-be set to \code{NA}.}
+\item{module_assignment}{Vector of modules assigned to variables. One module per variable.}
 
-\item{modules}{Character or character vector. Allows for module selection. Defaults to \code{"all"}.}
+\item{modules}{Module labels to plot, or \code{"all"} (default).}
 
-\item{lambda_grid}{A numeric vector of lambda values to iterate over.}
+\item{lambda_grid}{Numeric vector of non-negative sparsity penalties.}
 
-\item{cex}{Numeric. Font size for plot elements.
-Passed to \code{theme_classic()} argument.
-Defaults to 20.}
+\item{cex}{Base text size.}
 
-\item{labels}{Character vector. Provides group labels.}
+\item{labels}{Group labels, if present, in the same order as the expression data.}
 
-\item{legend_title}{Character. Optional title for a legend.}
+\item{legend_title}{Legend title.}
 
-\item{legend_position}{Character. Position of a legend to be passed to \code{ggplot} code. Default is \code{"right"} for a case with modules and \code{"none"} for a case with no modules.}
+\item{legend_position}{ggplot legend position.}
 
-\item{linewidth}{Numeric. Width of plotted lines. Default is 2.}
+\item{linewidth}{Line width.}
 
-\item{xlab}{Character. X-axis label.}
+\item{xlab}{X-axis label.}
 
-\item{ylab}{Character. Y-axis label.}
+\item{ylab}{Y-axis label.}
+
+\item{separate_modules}{Logical. Whether to facet by module as well as group.}
 }
 \value{
-Two printed ggplot objects. No values are returned.
+A named list of ggplot objects is returned invisibly. Plots are printed separately.
 }
 \description{
-Visualizes the effect of different \eqn{\lambda} values (sparsity penalty)
-on sparsity across modules and groups, if present.
+A connected scatter plot show the percentage of explained variance and
+variables assigned zero weights.
 }
-\details{
-This function builds a heatmap of the percentages of variables
-which were assigned zero weights by SPCA
-for each module and group, if present.
-The heatmap uses the \code{labeledHeatmap()} function from WGCNA.
+\examples{
+\donttest{
+data("seam_demo", package = "seam")
+plot_lambdas(
+ seam_demo$expression_data,
+ seam_demo$module_assignment,
+ lambda_grid = c(0.02, 0.05, 0.1),
+ labels = seam_demo$labels
+)
+}
+
 }
